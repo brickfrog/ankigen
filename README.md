@@ -26,7 +26,7 @@ AnkiGen is a Gradio-based web application that generates Anki-compatible CSV fil
 1. Clone this repository:
 
 ```
-git clone https://github.com/yourusername/ankigen.git
+git clone https://github.com/brickfrog/ankigen.git
 cd ankigen
 ```
 
