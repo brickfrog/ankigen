@@ -168,7 +168,7 @@ def generate_cards(
             total_cards = len(card_list.cards)
             # Calculate the number of digits needed for padding
             padding = len(str(total_cards))
-            
+
             for card_index, card in enumerate(card_list.cards, start=1):
                 # Format the index with zero-padding
                 index = f"{card_list_index}.{card_index:0{padding}}"
@@ -201,11 +201,7 @@ with gr.Blocks(
     gr.themes.Soft(), title="AnkiGen", css="footer{display:none !important}"
 ) as ankigen:
     gr.Markdown("# 📚 AnkiGen - Anki Card Generator")
-    gr.Markdown(
-        """
-        #### Generate an Anki comptible .csv using LLMs based on your subject and preferences.
-        """
-    )
+    gr.Markdown("#### Generate an LLM generated Anki comptible csv based on your subject and preferences.") #noqa
 
     with gr.Row():
         with gr.Column(scale=1):
@@ -228,7 +224,8 @@ with gr.Blocks(
             )
             preference_prompt = gr.Textbox(
                 label="Preference Prompt",
-                placeholder="Any preferences? e.g., 'Assume I'm a beginner'",
+                placeholder=
+                """Any preferences? For example: Learning level, e.g., "Assume I'm a beginner" or "Target an advanced audience" Content scope, e.g., "Only cover up until subqueries in SQL" or "Focus on organic chemistry basics""", #noqa
             )
             generate_button = gr.Button("Generate Cards")
         with gr.Column(scale=2):
@@ -238,7 +235,8 @@ with gr.Blocks(
                 Subject to change: currently exports a .csv with the following fields, you can
                 create a new note type with these fields to handle importing.: 
                 <b>Index, Topic, Question, Answer, Explanation, Example</b>
-                """)
+                """
+            )
             output = gr.Dataframe(
                 headers=[
                     "Index",
