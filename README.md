@@ -1,5 +1,6 @@
 ---
 title: AnkiGen
+emoji: 📚
 app_file: app.py
 requirements: requirements.txt
 python: 3.12
