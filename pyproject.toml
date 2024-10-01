@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ankigen"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Justin", email = "9146678+brickfrog@users.noreply.github.com"}
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "openai>=1.35.10",
+    "gradio>=4.44.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ipykernel>=6.29.5",
+]
+
+[tool.setuptools]
+py-modules = ["app"]
