@@ -12,8 +12,6 @@ sdk_version: 4.44.0
 
 AnkiGen is a Gradio-based web application that generates Anki-compatible CSV files using Large Language Models (LLMs) based on user-specified subjects and preferences.
 
-![AnkiGen Screenshot](example.png)
-
 ## Features
 
 - Generate Anki cards for various subjects
@@ -21,6 +19,16 @@ AnkiGen is a Gradio-based web application that generates Anki-compatible CSV fil
 - User-friendly interface powered by Gradio
 - Exports to CSV format compatible with Anki import
 - Utilizes LLMs for high-quality content generation
+
+## TODO
+
+- [ ] model dropdown - uses gpt4o-mini by default
+- [ ] cloze (checkbox?)
+
+## Screenshot
+
+![AnkiGen Screenshot](example.png)
+
 
 ## Installation for Local Use
 
