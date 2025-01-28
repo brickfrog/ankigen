@@ -1,2 +1,3 @@
 gradio
 openai
+tenacity>=8.2.3

@@ -166,3 +166,6 @@ cython_debug/
 .ruff_cache
 flagged
 *.csv
+
+
+uv.lock
