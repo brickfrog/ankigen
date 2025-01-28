@@ -198,7 +198,9 @@ def export_csv(d):
 
 
 with gr.Blocks(
-    gr.themes.Soft(), title="AnkiGen", css="footer{display:none !important}"
+    gr.themes.Soft(), 
+    title="AnkiGen", 
+    css="#footer{display:none !important} .tall-dataframe{height: 800px !important}"
 ) as ankigen:
     gr.Markdown("# 📚 AnkiGen - Anki Card Generator")
     gr.Markdown("#### Generate an LLM generated Anki comptible csv based on your subject and preferences.") #noqa
@@ -247,7 +249,7 @@ with gr.Blocks(
                     "Example",
                 ],
                 interactive=False,
-                height=800,
+                elem_classes="tall-dataframe"
             )
             export_button = gr.Button("Export to CSV")
             download_link = gr.File(interactive=False, visible=False)
