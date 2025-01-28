@@ -3,6 +3,12 @@ from pydantic import BaseModel
 from typing import List, Optional
 import gradio as gr
 import os
+from datetime import datetime
+from gradio.components import State, JSON
+import logging
+from logging.handlers import RotatingFileHandler
+import sys
+import json
 
 
 class Step(BaseModel):
@@ -37,6 +43,44 @@ class Card(BaseModel):
 class CardList(BaseModel):
     topic: str
     cards: List[Card]
+
+
+def setup_logging():
+    """Configure logging to both file and console"""
+    logger = logging.getLogger('ankigen')
+    logger.setLevel(logging.DEBUG)
+
+    # Create formatters
+    detailed_formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    simple_formatter = logging.Formatter(
+        '%(levelname)s: %(message)s'
+    )
+
+    # File handler (detailed logging)
+    file_handler = RotatingFileHandler(
+        'ankigen.log',
+        maxBytes=1024*1024,  # 1MB
+        backupCount=5
+    )
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(detailed_formatter)
+
+    # Console handler (info and above)
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(simple_formatter)
+
+    # Add handlers to logger
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+
+    return logger
+
+
+# Initialize logger
+logger = setup_logging()
 
 
 def structured_output_completion(
@@ -84,19 +128,27 @@ def generate_cards(
     cards_per_topic=2,
     preference_prompt="assume I'm a beginner",
 ):
+    logger.info(f"Starting card generation for subject: {subject}")
+    logger.debug(f"Parameters: topics={topic_number}, cards_per_topic={cards_per_topic}")
+
     # Input validation
     if not api_key_input:
+        logger.warning("No API key provided")
         raise gr.Error("OpenAI API key is required")
     if not api_key_input.startswith("sk-"):
+        logger.warning("Invalid API key format")
         raise gr.Error("Invalid API key format. OpenAI keys should start with 'sk-'")
     if not subject.strip():
+        logger.warning("No subject provided")
         raise gr.Error("Subject is required")
     
     gr.Info("🚀 Starting card generation...")
     
     try:
+        logger.debug("Initializing OpenAI client")
         client = OpenAI(api_key=api_key_input)
     except Exception as e:
+        logger.error(f"Failed to initialize OpenAI client: {str(e)}", exc_info=True)
         raise gr.Error(f"Failed to initialize OpenAI client: {str(e)}")
 
     # Update model name - looks like a typo in original
@@ -193,6 +245,9 @@ def generate_cards(
             print(f"An error occurred while processing card {index}: {e}")
             continue
 
+    # At the end, just return the flattened data
+    logger.debug(f"Generated flattened data structure: {type(flattened_data)}")
+    logger.debug(f"First row sample: {flattened_data[0] if flattened_data else 'No data'}")
     return flattened_data
 
 
@@ -214,15 +269,40 @@ def export_csv(d):
         raise gr.Error(f"Failed to export CSV: {str(e)}")
 
 
+# Add this near the top where we define our CSS
+js_storage = """
+async () => {
+    // Load decks from localStorage
+    const loadDecks = () => {
+        const decks = localStorage.getItem('ankigen_decks');
+        return decks ? JSON.parse(decks) : [];
+    };
+
+    // Save decks to localStorage
+    const saveDecks = (decks) => {
+        localStorage.setItem('ankigen_decks', JSON.stringify(decks));
+    };
+
+    // Add methods to window for Gradio to access
+    window.loadStoredDecks = loadDecks;
+    window.saveStoredDecks = saveDecks;
+    
+    // Initial load
+    return loadDecks();
+}
+"""
+
 with gr.Blocks(
     gr.themes.Soft(), 
     title="AnkiGen", 
-    css="#footer{display:none !important} .tall-dataframe{height: 800px !important}"
+    css="#footer{display:none !important} .tall-dataframe{height: 800px !important}",
+    js=js_storage,  # Add the JavaScript
 ) as ankigen:
     gr.Markdown("# 📚 AnkiGen - Anki Card Generator")
     gr.Markdown("#### Generate an LLM generated Anki comptible csv based on your subject and preferences.") #noqa
 
     with gr.Row():
+        # Left Column - Controls
         with gr.Column(scale=1):
             gr.Markdown("### Configuration")
 
@@ -239,6 +319,9 @@ with gr.Blocks(
                 placeholder="Enter the subject, e.g., 'Basic SQL Concepts'",
                 info="The topic you want to generate flashcards for",
             )
+            
+            # Generation Button
+            generate_button = gr.Button("Generate Cards", variant="primary")
 
             # Advanced Settings in Accordion
             with gr.Accordion("Advanced Settings", open=False):
@@ -265,16 +348,11 @@ with gr.Blocks(
                     lines=3,
                 )
 
-            # Generation Button with Loading State
-            with gr.Row():
-                generate_button = gr.Button("Generate Cards", variant="primary")
-                clear_button = gr.ClearButton(
-                    components=[subject, preference_prompt, output],
-                    value="Clear All",
-                )
-
+        # Right Column - Output
         with gr.Column(scale=2):
             gr.Markdown("### Generated Cards")
+            
+            # Output Format Documentation
             with gr.Accordion("Output Format", open=True):
                 gr.Markdown(
                     """
@@ -288,7 +366,7 @@ with gr.Blocks(
                     """
                 )
             
-            # Improved Dataframe with better styling
+            # Dataframe Output
             output = gr.Dataframe(
                 headers=[
                     "Index",
@@ -298,17 +376,22 @@ with gr.Blocks(
                     "Explanation",
                     "Example",
                 ],
-                interactive=False,
+                interactive=True,
                 elem_classes="tall-dataframe",
-                wrap=True,  # Allows text wrapping in cells
-                column_widths=[50, 100, 200, 200, 250, 200],  # Customize column widths
+                wrap=True,
+                column_widths=[50, 100, 200, 200, 250, 200],
             )
-            
+
+            # Export Controls
             with gr.Row():
                 export_button = gr.Button("Export to CSV", variant="secondary")
                 download_link = gr.File(interactive=False, visible=False)
+                clear_button = gr.ClearButton(
+                    components=[subject, preference_prompt],
+                    value="Clear Form",
+                )
 
-    # Add loading indicator during generation
+    # Simplified event handlers
     generate_button.click(
         fn=generate_cards,
         inputs=[
@@ -319,7 +402,7 @@ with gr.Blocks(
             preference_prompt,
         ],
         outputs=output,
-        show_progress="full",  # Shows a progress bar during generation
+        show_progress="full",
     )
 
     export_button.click(
@@ -330,4 +413,5 @@ with gr.Blocks(
     )
 
 if __name__ == "__main__":
+    logger.info("Starting AnkiGen application")
     ankigen.launch(share=False, favicon_path="./favicon.ico")
