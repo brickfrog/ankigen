@@ -2,6 +2,7 @@ from openai import OpenAI
 from pydantic import BaseModel
 from typing import List, Optional
 import gradio as gr
+import os
 
 
 class Step(BaseModel):
@@ -213,6 +214,7 @@ with gr.Blocks(
                 label="OpenAI API Key",
                 type="password",
                 placeholder="Enter your OpenAI API key",
+                value=os.getenv("OPENAI_API_KEY", ""),
             )
             subject = gr.Textbox(
                 label="Subject",
