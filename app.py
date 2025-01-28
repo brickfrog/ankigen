@@ -14,6 +14,7 @@ import random
 import json
 import tempfile
 from pathlib import Path
+import pandas as pd
 
 
 class Step(BaseModel):
@@ -43,11 +44,35 @@ class CardBack(BaseModel):
 class Card(BaseModel):
     front: CardFront
     back: CardBack
+    metadata: Optional[dict] = None
 
 
 class CardList(BaseModel):
     topic: str
     cards: List[Card]
+
+
+class ConceptBreakdown(BaseModel):
+    main_concept: str
+    prerequisites: List[str]
+    learning_outcomes: List[str]
+    common_misconceptions: List[str]
+    difficulty_level: str  # "beginner", "intermediate", "advanced"
+
+
+class CardGeneration(BaseModel):
+    concept: str
+    thought_process: str
+    verification_steps: List[str]
+    card: Card
+
+
+class LearningSequence(BaseModel):
+    topic: str
+    concepts: List[ConceptBreakdown]
+    cards: List[CardGeneration]
+    suggested_study_order: List[str]
+    review_recommendations: List[str]
 
 
 def setup_logging():
@@ -159,6 +184,38 @@ def structured_output_completion(
         raise
 
 
+def generate_learning_sequence(client, model, topic, num_cards, system_prompt):
+    """Generate an optimized learning sequence with verification steps"""
+    
+    sequence_prompt = f"""
+    Create a learning sequence for "{topic}" with {num_cards} cards.
+    For each concept:
+    1. Break it down into prerequisites and outcomes
+    2. Identify potential misconceptions
+    3. Generate cards with explicit thought process
+    4. Include verification steps for accuracy
+    5. Suggest optimal study order
+    
+    Each card should build upon previous knowledge and include:
+    - Clear connection to prerequisites
+    - Practical examples
+    - Common pitfall warnings
+    - Verification steps
+    """
+    
+    try:
+        sequence = structured_output_completion(
+            client, model, LearningSequence, system_prompt, sequence_prompt
+        )
+        
+        logger.info(f"Generated learning sequence for {topic}")
+        return sequence
+        
+    except Exception as e:
+        logger.error(f"Failed to generate learning sequence: {str(e)}")
+        raise
+
+
 def generate_cards_batch(
     client,
     model: str,
@@ -167,43 +224,70 @@ def generate_cards_batch(
     system_prompt: str,
     batch_size: int = 3
 ) -> List[Card]:
-    """Generate cards in batches to avoid overloading the API"""
-    cards = []
-    remaining = num_cards
+    """Generate cards in batches with pedagogical structure"""
     
-    while remaining > 0:
-        current_batch = min(batch_size, remaining)
+    try:
+        sequence = generate_learning_sequence(
+            client, model, topic, num_cards, system_prompt
+        )
         
-        card_prompt = f"""
-        You are to generate {current_batch} cards on: "{topic}".
-        Questions should cover both sample problems and concepts.
-        Use the explanation field to help the user understand the reason behind things 
-        and maximize learning. Additionally, offer tips (performance, gotchas, etc.).
-        """
+        if not sequence or not sequence.cards:
+            logger.warning(f"No sequence or cards generated for topic {topic}")
+            return []
         
-        try:
-            batch_response = structured_output_completion(
-                client, model, CardList, system_prompt, card_prompt
-            )
-            if batch_response and hasattr(batch_response, "cards"):
-                cards.extend(batch_response.cards)
-                remaining -= len(batch_response.cards)
-                logger.info(f"Generated batch of {len(batch_response.cards)} cards")
-            else:
-                logger.warning(f"Failed to generate batch for topic {topic}")
-                break  # Break if we get an invalid response
+        cards = []
+        # Make sure we have matching concepts and cards
+        for i, card_gen in enumerate(sequence.cards):
+            if i >= len(sequence.concepts):  # Guard against index errors
+                break
                 
-        except Exception as e:
-            logger.error(f"Batch generation failed: {str(e)}", exc_info=True)
-            gr.Warning(f"Failed to generate some cards for '{topic}'")
-            break  # Break on error to avoid infinite loops
+            concept = sequence.concepts[i]
+            # Log the thought process and verification
+            logger.debug(f"Thought process: {card_gen.thought_process}")
+            logger.debug(f"Verification steps: {card_gen.verification_steps}")
             
-    return cards
+            # Create the card with metadata
+            card = card_gen.card
+            card.metadata = {
+                "prerequisites": concept.prerequisites,
+                "learning_outcomes": concept.learning_outcomes,
+                "misconceptions": concept.common_misconceptions,
+                "difficulty": concept.difficulty_level,
+                "suggested_order": sequence.suggested_study_order[i] if i < len(sequence.suggested_study_order) else "",
+                "review_recommendation": sequence.review_recommendations[i] if i < len(sequence.review_recommendations) else ""
+            }
+            cards.append(card)
+        
+        return cards
+        
+    except Exception as e:
+        logger.error(f"Failed to generate cards batch: {str(e)}")
+        return []
 
+
+# Add near the top with other constants
+AVAILABLE_MODELS = [
+    {
+        "value": "gpt-4o-mini",  # Default model
+        "label": "GPT-4o Mini (Fastest)",
+        "description": "Balanced speed and quality"
+    },
+    {
+        "value": "gpt-4o",
+        "label": "GPT-4o (Better Quality)",
+        "description": "Higher quality, slower generation"
+    },
+    {
+        "value": "o1",
+        "label": "O1 (Best Quality)",
+        "description": "Highest quality, slowest generation"
+    }
+]
 
 def generate_cards(
     api_key_input,
     subject,
+    model_name="gpt-4o-mini",  # Add default model parameter
     topic_number=1,
     cards_per_topic=2,
     preference_prompt="assume I'm a beginner",
@@ -231,16 +315,35 @@ def generate_cards(
         logger.error(f"Failed to initialize OpenAI client: {str(e)}", exc_info=True)
         raise gr.Error(f"Failed to initialize OpenAI client: {str(e)}")
 
-    # Update model name - looks like a typo in original
-    model = "gpt-4o-mini"
+    # Use the selected model
+    model = model_name  # Remove hardcoded model name
 
-    all_card_lists = []
+    flattened_data = []
+    total = 0
     
-    gr.Info(f"📚 Generating {topic_number} topics for {subject}...")
-
+    # Use progress_tracker to show progress
+    progress_tracker = gr.Progress(track_tqdm=True)
+    
     system_prompt = f"""
-    You are an expert in {subject}, assisting the user to master the topic while 
-    keeping in mind the user's preferences: {preference_prompt}.
+    You are an expert educator in {subject}, creating an optimized learning sequence.
+    Your goal is to:
+    1. Break down the subject into logical concepts
+    2. Identify prerequisites and learning outcomes
+    3. Generate cards that build upon each other
+    4. Address and correct common misconceptions by:
+       - Clearly stating why the misconception is wrong
+       - Explaining the correct concept
+       - Providing evidence or examples that disprove the misconception
+    5. Include verification steps to minimize hallucinations
+    6. Provide a recommended study order
+
+    For explanations and examples:
+    - Keep explanations in plain text
+    - Format code examples with triple backticks (```)
+    - Separate conceptual examples from code examples
+    - Use clear, concise language
+
+    Keep in mind the user's preferences: {preference_prompt}
     """
 
     topic_prompt = f"""
@@ -252,179 +355,358 @@ def generate_cards(
         topics_response = structured_output_completion(
             client, model, Topics, system_prompt, topic_prompt
         )
-        if topics_response is None:
+        
+        if not topics_response or not hasattr(topics_response, "result"):
             raise gr.Error("Failed to generate topics. Please try again.")
-        if not hasattr(topics_response, "result") or not topics_response.result:
-            raise gr.Error("Invalid response format from API. Please try again.")
             
         topic_list = [
-            item for subtopic in topics_response.result for item in subtopic.result
+            item for subtopic in topics_response.result 
+            for item in subtopic.result
         ][:topic_number]
         
         gr.Info(f"✨ Generated {len(topic_list)} topics successfully!")
         
-    except Exception as e:
-        raise gr.Error(f"Topic generation failed: {str(e)}")
+        # Generate cards for each topic
+        for i, topic in enumerate(progress_tracker.tqdm(topic_list, desc="Generating cards")):
+            progress_html = f"""
+            <div style="text-align: center">
+                <p>Generating cards for topic {i+1}/{len(topic_list)}: {topic}</p>
+                <p>Cards generated so far: {total}</p>
+            </div>
+            """
+            
+            try:
+                cards = generate_cards_batch(
+                    client,
+                    model,
+                    topic,
+                    cards_per_topic,
+                    system_prompt,
+                    batch_size=3
+                )
+                
+                if cards:
+                    for card_index, card in enumerate(cards, start=1):
+                        index = f"{i+1}.{card_index}"
+                        metadata = card.metadata or {}
+                        
+                        row = [
+                            index,
+                            topic,
+                            card.front.question,
+                            card.back.answer,
+                            card.back.explanation,
+                            card.back.example,
+                            metadata.get("prerequisites", []),
+                            metadata.get("learning_outcomes", []),
+                            metadata.get("misconceptions", []),
+                            metadata.get("difficulty", "beginner")
+                        ]
+                        flattened_data.append(row)
+                        total += 1
+                    
+                    gr.Info(f"✅ Generated {len(cards)} cards for {topic}")
+                
+            except Exception as e:
+                logger.error(f"Failed to generate cards for topic {topic}: {str(e)}")
+                gr.Warning(f"Failed to generate cards for '{topic}'")
+                continue
 
-    # Instead of returning a generator, use gr.Progress()
-    progress_tracker = gr.Progress(track_tqdm=True)
-    flattened_data = []
-    total = 0
-    
-    # Use progress_tracker to show progress
-    for i, topic in enumerate(progress_tracker.tqdm(topic_list, desc="Generating cards")):
-        progress_html = f"""
+        final_html = f"""
         <div style="text-align: center">
-            <p>Generating cards for topic {i+1}/{len(topic_list)}: {topic}</p>
-            <p>Cards generated so far: {total}</p>
+            <p>✅ Generation complete!</p>
+            <p>Total cards generated: {total}</p>
         </div>
         """
         
-        try:
-            cards = generate_cards_batch(
-                client,
-                model,
-                topic,
-                cards_per_topic,
-                system_prompt,
-                batch_size=3
-            )
-            
-            if cards:
-                card_list = CardList(topic=topic, cards=cards)
-                for card_index, card in enumerate(card_list.cards, start=1):
-                    index = f"{i+1}.{card_index}"
-                    row = [
-                        index, 
-                        topic, 
-                        card.front.question,
-                        card.back.answer,
-                        card.back.explanation,
-                        card.back.example
-                    ]
-                    flattened_data.append(row)
-                    total += 1
-                
-                gr.Info(f"✅ Generated {len(cards)} cards for {topic}")
-            
-        except Exception as e:
-            logger.error(f"Failed to generate cards for topic {topic}: {str(e)}")
-            gr.Warning(f"Failed to generate cards for '{topic}'")
-            continue
+        # Convert to DataFrame with all columns
+        df = pd.DataFrame(
+            flattened_data,
+            columns=[
+                "Index",
+                "Topic",
+                "Question",
+                "Answer",
+                "Explanation",
+                "Example",
+                "Prerequisites",
+                "Learning_Outcomes",
+                "Common_Misconceptions",
+                "Difficulty"
+            ]
+        )
+        
+        return df, final_html, total
 
-    final_html = f"""
-    <div style="text-align: center">
-        <p>✅ Generation complete!</p>
-        <p>Total cards generated: {total}</p>
-    </div>
-    """
-    
-    return flattened_data, final_html, total
+    except Exception as e:
+        logger.error(f"Card generation failed: {str(e)}", exc_info=True)
+        raise gr.Error(f"Card generation failed: {str(e)}")
 
 
-# Add these constants after the imports
+# Update the BASIC_MODEL definition with enhanced CSS/HTML
 BASIC_MODEL = genanki.Model(
-    random.randrange(1 << 30, 1 << 31),  # Random model ID
-    'AnkiGen Basic',
+    random.randrange(1 << 30, 1 << 31),
+    'AnkiGen Enhanced',
     fields=[
         {'name': 'Question'},
         {'name': 'Answer'},
         {'name': 'Explanation'},
         {'name': 'Example'},
+        {'name': 'Prerequisites'},
+        {'name': 'Learning_Outcomes'},
+        {'name': 'Common_Misconceptions'},
+        {'name': 'Difficulty'}
     ],
     templates=[{
         'name': 'Card 1',
         'qfmt': '''
-            <div class="card question">
-                <div class="content">{{Question}}</div>
+            <div class="card question-side">
+                <div class="difficulty-indicator {{Difficulty}}"></div>
+                <div class="content">
+                    <div class="question">{{Question}}</div>
+                    <div class="prerequisites" onclick="event.stopPropagation();">
+                        <div class="prerequisites-toggle">Show Prerequisites</div>
+                        <div class="prerequisites-content">{{Prerequisites}}</div>
+                    </div>
+                </div>
             </div>
+            <script>
+                document.querySelector('.prerequisites-toggle').addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    this.parentElement.classList.toggle('show');
+                });
+            </script>
         ''',
         'afmt': '''
-            <div class="card answer">
-                <div class="question">{{Question}}</div>
-                <hr>
+            <div class="card answer-side">
                 <div class="content">
+                    <div class="question-section">
+                        <div class="question">{{Question}}</div>
+                        <div class="prerequisites">
+                            <strong>Prerequisites:</strong> {{Prerequisites}}
+                        </div>
+                    </div>
+                    <hr>
+                    
                     <div class="answer-section">
-                        <h3>Answer:</h3>
-                        <div>{{Answer}}</div>
+                        <h3>Answer</h3>
+                        <div class="answer">{{Answer}}</div>
                     </div>
                     
                     <div class="explanation-section">
-                        <h3>Explanation:</h3>
-                        <div>{{Explanation}}</div>
+                        <h3>Explanation</h3>
+                        <div class="explanation-text">{{Explanation}}</div>
                     </div>
                     
                     <div class="example-section">
-                        <h3>Example:</h3>
+                        <h3>Example</h3>
+                        <div class="example-text"></div>
                         <pre><code>{{Example}}</code></pre>
+                    </div>
+                    
+                    <div class="metadata-section">
+                        <div class="learning-outcomes">
+                            <h3>Learning Outcomes</h3>
+                            <div>{{Learning_Outcomes}}</div>
+                        </div>
+                        
+                        <div class="misconceptions">
+                            <h3>Common Misconceptions - Debunked</h3>
+                            <div>{{Common_Misconceptions}}</div>
+                        </div>
+                        
+                        <div class="difficulty">
+                            <h3>Difficulty Level</h3>
+                            <div>{{Difficulty}}</div>
+                        </div>
                     </div>
                 </div>
             </div>
         ''',
     }],
     css='''
+        /* Base styles */
         .card {
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
             font-size: 16px;
-            text-align: left;
-            color: #333;
-            line-height: 1.5;
+            line-height: 1.6;
+            color: #1a1a1a;
             max-width: 800px;
-            margin: 20px auto;
+            margin: 0 auto;
             padding: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            border-radius: 8px;
-            background: #fff;
+            background: #ffffff;
         }
+        
+        @media (max-width: 768px) {
+            .card {
+                font-size: 14px;
+                padding: 15px;
+            }
+        }
+        
+        /* Question side */
+        .question-side {
+            position: relative;
+            min-height: 200px;
+        }
+        
+        .difficulty-indicator {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+        
+        .difficulty-indicator.beginner { background: #4ade80; }
+        .difficulty-indicator.intermediate { background: #fbbf24; }
+        .difficulty-indicator.advanced { background: #ef4444; }
         
         .question {
-            font-size: 1.2em;
-            font-weight: 500;
+            font-size: 1.3em;
+            font-weight: 600;
             color: #2563eb;
-            margin-bottom: 1em;
+            margin-bottom: 1.5em;
         }
         
-        hr {
-            border: none;
-            border-top: 2px solid #e5e7eb;
+        .prerequisites {
+            margin-top: 1em;
+            font-size: 0.9em;
+            color: #666;
+        }
+        
+        .prerequisites-toggle {
+            color: #2563eb;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+        
+        .prerequisites-content {
+            display: none;
+            margin-top: 0.5em;
+            padding: 0.5em;
+            background: #f8fafc;
+            border-radius: 4px;
+        }
+        
+        .prerequisites.show .prerequisites-content {
+            display: block;
+        }
+        
+        /* Answer side */
+        .answer-section,
+        .explanation-section,
+        .example-section {
             margin: 1.5em 0;
-        }
-        
-        h3 {
-            color: #1f2937;
-            font-size: 1.1em;
-            margin: 1em 0 0.5em 0;
+            padding: 1.2em;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
         
         .answer-section {
             background: #f0f9ff;
-            padding: 1em;
-            border-radius: 6px;
-            margin: 1em 0;
+            border-left: 4px solid #2563eb;
         }
         
         .explanation-section {
             background: #f0fdf4;
-            padding: 1em;
-            border-radius: 6px;
-            margin: 1em 0;
+            border-left: 4px solid #4ade80;
         }
         
         .example-section {
-            background: #fef2f2;
-            padding: 1em;
-            border-radius: 6px;
-            margin: 1em 0;
+            background: #fff7ed;
+            border-left: 4px solid #f97316;
         }
         
+        /* Code blocks */
         pre code {
             display: block;
-            background: #1f2937;
-            color: #e5e7eb;
             padding: 1em;
-            border-radius: 4px;
+            background: #1e293b;
+            color: #e2e8f0;
+            border-radius: 6px;
             overflow-x: auto;
-            font-family: 'Fira Code', monospace;
+            font-family: 'Fira Code', 'Consolas', monospace;
+            font-size: 0.9em;
+        }
+        
+        /* Metadata tabs */
+        .metadata-tabs {
+            margin-top: 2em;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .tab-buttons {
+            display: flex;
+            background: #f8fafc;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .tab-btn {
+            flex: 1;
+            padding: 0.8em;
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-weight: 500;
+            color: #64748b;
+            transition: all 0.2s;
+        }
+        
+        .tab-btn:hover {
+            background: #f1f5f9;
+        }
+        
+        .tab-btn.active {
+            color: #2563eb;
+            background: #fff;
+            border-bottom: 2px solid #2563eb;
+        }
+        
+        .tab-content {
+            display: none;
+            padding: 1.2em;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* Responsive design */
+        @media (max-width: 640px) {
+            .tab-buttons {
+                flex-direction: column;
+            }
+            
+            .tab-btn {
+                width: 100%;
+                text-align: left;
+                padding: 0.6em;
+            }
+            
+            .answer-section,
+            .explanation-section,
+            .example-section {
+                padding: 1em;
+                margin: 1em 0;
+            }
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .card {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        
+        .tab-content.active {
+            animation: fadeIn 0.2s ease-in-out;
         }
     '''
 )
@@ -450,7 +732,7 @@ def export_csv(data):
         raise gr.Error(f"Failed to export CSV: {str(e)}")
 
 def export_deck(data, subject):
-    """Export the generated cards as an Anki deck"""
+    """Export the generated cards as an Anki deck with pedagogical metadata"""
     if data is None:
         raise gr.Error("No data to export. Please generate cards first.")
         
@@ -460,12 +742,140 @@ def export_deck(data, subject):
     try:
         gr.Info("💾 Creating Anki deck...")
         
-        # Create a new deck with a random ID
         deck_id = random.randrange(1 << 30, 1 << 31)
         deck = genanki.Deck(deck_id, f"AnkiGen - {subject}")
         
-        # Convert DataFrame to records for easier access
         records = data.to_dict('records')
+        
+        # Update the model to include metadata fields
+        global BASIC_MODEL
+        BASIC_MODEL = genanki.Model(
+            random.randrange(1 << 30, 1 << 31),
+            'AnkiGen Enhanced',
+            fields=[
+                {'name': 'Question'},
+                {'name': 'Answer'},
+                {'name': 'Explanation'},
+                {'name': 'Example'},
+                {'name': 'Prerequisites'},
+                {'name': 'Learning_Outcomes'},
+                {'name': 'Common_Misconceptions'},
+                {'name': 'Difficulty'}
+            ],
+            templates=[{
+                'name': 'Card 1',
+                'qfmt': '''
+                    <div class="card question">
+                        <div class="content">{{Question}}</div>
+                        <div class="prerequisites">Prerequisites: {{Prerequisites}}</div>
+                    </div>
+                ''',
+                'afmt': '''
+                    <div class="card answer">
+                        <div class="question">{{Question}}</div>
+                        <hr>
+                        <div class="content">
+                            <div class="answer-section">
+                                <h3>Answer:</h3>
+                                <div>{{Answer}}</div>
+                            </div>
+                            
+                            <div class="explanation-section">
+                                <h3>Explanation:</h3>
+                                <div>{{Explanation}}</div>
+                            </div>
+                            
+                            <div class="example-section">
+                                <h3>Example:</h3>
+                                <pre><code>{{Example}}</code></pre>
+                            </div>
+                            
+                            <div class="metadata-section">
+                                <h3>Prerequisites:</h3>
+                                <div>{{Prerequisites}}</div>
+                                
+                                <h3>Learning Outcomes:</h3>
+                                <div>{{Learning_Outcomes}}</div>
+                                
+                                <h3>Watch out for:</h3>
+                                <div>{{Common_Misconceptions}}</div>
+                                
+                                <h3>Difficulty Level:</h3>
+                                <div>{{Difficulty}}</div>
+                            </div>
+                        </div>
+                    </div>
+                '''
+            }],
+            css='''
+                .card {
+                    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+                    font-size: 16px;
+                    line-height: 1.6;
+                    color: #1a1a1a;
+                    max-width: 800px;
+                    margin: 0 auto;
+                    padding: 20px;
+                    background: #ffffff;
+                }
+                
+                .question {
+                    font-size: 1.3em;
+                    font-weight: 600;
+                    color: #2563eb;
+                    margin-bottom: 1.5em;
+                }
+                
+                .prerequisites {
+                    font-size: 0.9em;
+                    color: #666;
+                    margin-top: 1em;
+                    font-style: italic;
+                }
+                
+                .answer-section,
+                .explanation-section,
+                .example-section {
+                    margin: 1.5em 0;
+                    padding: 1.2em;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                }
+                
+                .answer-section {
+                    background: #f0f9ff;
+                    border-left: 4px solid #2563eb;
+                }
+                
+                .explanation-section {
+                    background: #f0fdf4;
+                    border-left: 4px solid #4ade80;
+                }
+                
+                .example-section {
+                    background: #fff7ed;
+                    border-left: 4px solid #f97316;
+                }
+                
+                .metadata-section {
+                    background: #f8f9fa;
+                    padding: 1em;
+                    border-radius: 6px;
+                    margin: 1em 0;
+                }
+                
+                pre code {
+                    display: block;
+                    padding: 1em;
+                    background: #1e293b;
+                    color: #e2e8f0;
+                    border-radius: 6px;
+                    overflow-x: auto;
+                    font-family: 'Fira Code', 'Consolas', monospace;
+                    font-size: 0.9em;
+                }
+            '''
+        )
         
         # Add notes to the deck
         for record in records:
@@ -475,7 +885,11 @@ def export_deck(data, subject):
                     str(record['Question']),
                     str(record['Answer']),
                     str(record['Explanation']),
-                    str(record['Example'])
+                    str(record['Example']),
+                    str(record['Prerequisites']),
+                    str(record['Learning_Outcomes']),
+                    str(record['Common_Misconceptions']),
+                    str(record['Difficulty'])
                 ]
             )
             deck.add_note(note)
@@ -543,8 +957,10 @@ with gr.Blocks(
     js=js_storage,  # Add the JavaScript
 ) as ankigen:
     with gr.Column(elem_classes="contain"):
-        gr.Markdown("# 📚 AnkiGen - Anki Card Generator")
-        gr.Markdown("#### Generate an LLM generated Anki comptible csv based on your subject and preferences.") #noqa
+        gr.Markdown("# 📚 AnkiGen - Advanced Anki Card Generator")
+        gr.Markdown("""
+        #### Generate comprehensive Anki flashcards using AI. 
+        """)
 
         with gr.Row():
             # Left Column - Controls
@@ -570,6 +986,25 @@ with gr.Blocks(
 
                 # Advanced Settings in Accordion
                 with gr.Accordion("Advanced Settings", open=False):
+                    model_choice = gr.Dropdown(
+                        choices=[{
+                            "value": m["value"],
+                            "label": m["label"]
+                        } for m in AVAILABLE_MODELS],
+                        value="gpt-4o-mini",
+                        label="Model Selection",
+                        info="Select the AI model to use for generation",
+                        type="value"
+                    )
+                    
+                    # Add tooltip/description for models
+                    model_info = gr.Markdown("""
+                    **Model Information:**
+                    - **GPT-4o Mini**: Fastest option, good for most use cases
+                    - **GPT-4o**: Better quality, takes longer to generate
+                    - **O1**: Highest quality, longest generation time
+                    """)
+                    
                     topic_number = gr.Slider(
                         label="Number of Topics",
                         minimum=2,
@@ -599,17 +1034,24 @@ with gr.Blocks(
                 
                 # Output Format Documentation
                 with gr.Accordion("Output Format", open=True):
-                    gr.Markdown(
-                        """
-                        The generated CSV will contain the following fields:
-                        * **Index**: Unique identifier for each card
-                        * **Topic**: The subject subtopic this card belongs to
-                        * **Question**: The front of the flashcard
-                        * **Answer**: The core answer
-                        * **Explanation**: Detailed explanation of the concept
-                        * **Example**: A practical example to reinforce learning
-                        """
-                    )
+                    gr.Markdown("""
+                    The generated cards include:
+                    
+                    * **Index**: Unique identifier for each card
+                    * **Topic**: The specific subtopic within your subject
+                    * **Question**: Clear, focused question for the flashcard front
+                    * **Answer**: Concise core answer
+                    * **Explanation**: Detailed conceptual explanation
+                    * **Example**: Practical implementation or code example
+                    * **Prerequisites**: Required knowledge for this concept
+                    * **Learning Outcomes**: What you should understand after mastering this card
+                    * **Common Misconceptions**: Incorrect assumptions debunked with explanations
+                    * **Difficulty**: Concept complexity level for optimal study sequencing
+                    
+                    Export options:
+                    - **CSV**: Raw data for custom processing
+                    - **Anki Deck**: Ready-to-use deck with formatted cards and metadata
+                    """)
 
                     # Add near the output format documentation
                     with gr.Accordion("Example Card Format", open=False):
@@ -622,8 +1064,17 @@ with gr.Blocks(
     },
     "back": {
         "answer": "A PRIMARY KEY constraint uniquely identifies each record in a table",
-        "explanation": "It ensures that a column or set of columns has unique values and cannot contain NULL values. This is essential for maintaining data integrity and establishing relationships between tables.",
-        "example": "CREATE TABLE Users (\n  user_id INT PRIMARY KEY,\n  username VARCHAR(50)\n);"
+        "explanation": "A primary key serves as a unique identifier for each row in a database table. It enforces data integrity by ensuring that:\n1. Each value is unique\n2. No null values are allowed\n3. The value remains stable over time\n\nThis is fundamental for:\n- Establishing relationships between tables\n- Maintaining data consistency\n- Efficient data retrieval",
+        "example": "-- Creating a table with a primary key\nCREATE TABLE Users (\n  user_id INT PRIMARY KEY,\n  username VARCHAR(50) NOT NULL,\n  email VARCHAR(100) UNIQUE\n);"
+    },
+    "metadata": {
+        "prerequisites": ["Basic SQL table concepts", "Understanding of data types"],
+        "learning_outcomes": ["Understand the purpose and importance of primary keys", "Know how to create and use primary keys"],
+        "common_misconceptions": [
+            "❌ Misconception: Primary keys must always be single columns\n✓ Reality: Primary keys can be composite (multiple columns)",
+            "❌ Misconception: Primary keys must be integers\n✓ Reality: Any data type that ensures uniqueness can be used"
+        ],
+        "difficulty": "beginner"
     }
 }
                             ''',
@@ -639,11 +1090,15 @@ with gr.Blocks(
                         "Answer",
                         "Explanation",
                         "Example",
+                        "Prerequisites",
+                        "Learning_Outcomes",
+                        "Common_Misconceptions",
+                        "Difficulty"
                     ],
                     interactive=True,
                     elem_classes="tall-dataframe",
                     wrap=True,
-                    column_widths=[50, 100, 200, 200, 250, 200],
+                    column_widths=[50, 100, 200, 200, 250, 200, 150, 150, 150, 100],
                 )
 
                 # Export Controls
@@ -667,6 +1122,7 @@ with gr.Blocks(
             inputs=[
                 api_key_input,
                 subject,
+                model_choice,  # Add model selection
                 topic_number,
                 cards_per_topic,
                 preference_prompt,
