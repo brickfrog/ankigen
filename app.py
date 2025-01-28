@@ -264,9 +264,19 @@ def generate_cards(
     except Exception as e:
         raise gr.Error(f"Topic generation failed: {str(e)}")
 
-    # Use batch processing for card generation
-    for i, topic in enumerate(topic_list, 1):
-        gr.Info(f"📝 Generating cards for topic {i}/{len(topic_list)}: {topic}")
+    # Instead of returning a generator, use gr.Progress()
+    progress_tracker = gr.Progress(track_tqdm=True)
+    flattened_data = []
+    total = 0
+    
+    # Use progress_tracker to show progress
+    for i, topic in enumerate(progress_tracker.tqdm(topic_list, desc="Generating cards")):
+        progress_html = f"""
+        <div style="text-align: center">
+            <p>Generating cards for topic {i+1}/{len(topic_list)}: {topic}</p>
+            <p>Cards generated so far: {total}</p>
+        </div>
+        """
         
         try:
             cards = generate_cards_batch(
@@ -280,7 +290,19 @@ def generate_cards(
             
             if cards:
                 card_list = CardList(topic=topic, cards=cards)
-                all_card_lists.append(card_list)
+                for card_index, card in enumerate(card_list.cards, start=1):
+                    index = f"{i+1}.{card_index}"
+                    row = [
+                        index, 
+                        topic, 
+                        card.front.question,
+                        card.back.answer,
+                        card.back.explanation,
+                        card.back.example
+                    ]
+                    flattened_data.append(row)
+                    total += 1
+                
                 gr.Info(f"✅ Generated {len(cards)} cards for {topic}")
             
         except Exception as e:
@@ -288,36 +310,14 @@ def generate_cards(
             gr.Warning(f"Failed to generate cards for '{topic}'")
             continue
 
-    if not all_card_lists:
-        raise gr.Error("Failed to generate any valid cards. Please try again.")
-
-    flattened_data = []
-
-    for card_list_index, card_list in enumerate(all_card_lists, start=1):
-        try:
-            topic = card_list.topic
-            # Get the total number of cards in this list to determine padding
-            total_cards = len(card_list.cards)
-            # Calculate the number of digits needed for padding
-            padding = len(str(total_cards))
-
-            for card_index, card in enumerate(card_list.cards, start=1):
-                # Format the index with zero-padding
-                index = f"{card_list_index}.{card_index:0{padding}}"
-                question = card.front.question
-                answer = card.back.answer
-                explanation = card.back.explanation
-                example = card.back.example
-                row = [index, topic, question, answer, explanation, example]
-                flattened_data.append(row)
-        except Exception as e:
-            print(f"An error occurred while processing card {index}: {e}")
-            continue
-
-    # At the end, just return the flattened data
-    logger.debug(f"Generated flattened data structure: {type(flattened_data)}")
-    logger.debug(f"First row sample: {flattened_data[0] if flattened_data else 'No data'}")
-    return flattened_data
+    final_html = f"""
+    <div style="text-align: center">
+        <p>✅ Generation complete!</p>
+        <p>Total cards generated: {total}</p>
+    </div>
+    """
+    
+    return flattened_data, final_html, total
 
 
 def export_csv(d):
@@ -361,121 +361,160 @@ async () => {
 }
 """
 
+# Create a custom theme
+custom_theme = gr.themes.Soft().set(
+    body_background_fill="*background_fill_secondary",
+    block_background_fill="*background_fill_primary",
+    block_border_width="0",
+    button_primary_background_fill="*primary_500",
+    button_primary_text_color="white",
+)
+
 with gr.Blocks(
-    gr.themes.Soft(), 
-    title="AnkiGen", 
-    css="#footer{display:none !important} .tall-dataframe{height: 800px !important}",
+    theme=custom_theme,
+    title="AnkiGen",
+    css="""
+        #footer {display:none !important}
+        .tall-dataframe {height: 800px !important}
+        .contain {max-width: 1200px; margin: auto;}
+        .output-cards {border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);}
+    """,
     js=js_storage,  # Add the JavaScript
 ) as ankigen:
-    gr.Markdown("# 📚 AnkiGen - Anki Card Generator")
-    gr.Markdown("#### Generate an LLM generated Anki comptible csv based on your subject and preferences.") #noqa
+    with gr.Column(elem_classes="contain"):
+        gr.Markdown("# 📚 AnkiGen - Anki Card Generator")
+        gr.Markdown("#### Generate an LLM generated Anki comptible csv based on your subject and preferences.") #noqa
 
-    with gr.Row():
-        # Left Column - Controls
-        with gr.Column(scale=1):
-            gr.Markdown("### Configuration")
+        with gr.Row():
+            # Left Column - Controls
+            with gr.Column(scale=1):
+                gr.Markdown("### Configuration")
 
-            # Basic Settings
-            api_key_input = gr.Textbox(
-                label="OpenAI API Key",
-                type="password",
-                placeholder="Enter your OpenAI API key",
-                value=os.getenv("OPENAI_API_KEY", ""),
-                info="Your OpenAI API key starting with 'sk-'",
-            )
-            subject = gr.Textbox(
-                label="Subject",
-                placeholder="Enter the subject, e.g., 'Basic SQL Concepts'",
-                info="The topic you want to generate flashcards for",
-            )
-            
-            # Generation Button
-            generate_button = gr.Button("Generate Cards", variant="primary")
-
-            # Advanced Settings in Accordion
-            with gr.Accordion("Advanced Settings", open=False):
-                topic_number = gr.Slider(
-                    label="Number of Topics",
-                    minimum=2,
-                    maximum=20,
-                    step=1,
-                    value=2,
-                    info="How many distinct topics to cover within the subject",
+                # Basic Settings
+                api_key_input = gr.Textbox(
+                    label="OpenAI API Key",
+                    type="password",
+                    placeholder="Enter your OpenAI API key",
+                    value=os.getenv("OPENAI_API_KEY", ""),
+                    info="Your OpenAI API key starting with 'sk-'",
                 )
-                cards_per_topic = gr.Slider(
-                    label="Cards per Topic",
-                    minimum=2,
-                    maximum=30,
-                    step=1,
-                    value=3,
-                    info="How many flashcards to generate for each topic",
+                subject = gr.Textbox(
+                    label="Subject",
+                    placeholder="Enter the subject, e.g., 'Basic SQL Concepts'",
+                    info="The topic you want to generate flashcards for",
                 )
-                preference_prompt = gr.Textbox(
-                    label="Learning Preferences",
-                    placeholder="e.g., 'Assume I'm a beginner' or 'Focus on practical examples'",
-                    info="Customize how the content is presented",
-                    lines=3,
+                
+                # Generation Button
+                generate_button = gr.Button("Generate Cards", variant="primary")
+
+                # Advanced Settings in Accordion
+                with gr.Accordion("Advanced Settings", open=False):
+                    topic_number = gr.Slider(
+                        label="Number of Topics",
+                        minimum=2,
+                        maximum=20,
+                        step=1,
+                        value=2,
+                        info="How many distinct topics to cover within the subject",
+                    )
+                    cards_per_topic = gr.Slider(
+                        label="Cards per Topic",
+                        minimum=2,
+                        maximum=30,
+                        step=1,
+                        value=3,
+                        info="How many flashcards to generate for each topic",
+                    )
+                    preference_prompt = gr.Textbox(
+                        label="Learning Preferences",
+                        placeholder="e.g., 'Assume I'm a beginner' or 'Focus on practical examples'",
+                        info="Customize how the content is presented",
+                        lines=3,
+                    )
+
+            # Right Column - Output
+            with gr.Column(scale=2):
+                gr.Markdown("### Generated Cards")
+                
+                # Output Format Documentation
+                with gr.Accordion("Output Format", open=True):
+                    gr.Markdown(
+                        """
+                        The generated CSV will contain the following fields:
+                        * **Index**: Unique identifier for each card
+                        * **Topic**: The subject subtopic this card belongs to
+                        * **Question**: The front of the flashcard
+                        * **Answer**: The core answer
+                        * **Explanation**: Detailed explanation of the concept
+                        * **Example**: A practical example to reinforce learning
+                        """
+                    )
+
+                    # Add near the output format documentation
+                    with gr.Accordion("Example Card Format", open=False):
+                        gr.Code(
+                            label="Example Card",
+                            value='''
+{
+    "front": {
+        "question": "What is a PRIMARY KEY constraint in SQL?"
+    },
+    "back": {
+        "answer": "A PRIMARY KEY constraint uniquely identifies each record in a table",
+        "explanation": "It ensures that a column or set of columns has unique values and cannot contain NULL values. This is essential for maintaining data integrity and establishing relationships between tables.",
+        "example": "CREATE TABLE Users (\n  user_id INT PRIMARY KEY,\n  username VARCHAR(50)\n);"
+    }
+}
+                            ''',
+                            language="json"
+                        )
+                
+                # Dataframe Output
+                output = gr.Dataframe(
+                    headers=[
+                        "Index",
+                        "Topic",
+                        "Question",
+                        "Answer",
+                        "Explanation",
+                        "Example",
+                    ],
+                    interactive=True,
+                    elem_classes="tall-dataframe",
+                    wrap=True,
+                    column_widths=[50, 100, 200, 200, 250, 200],
                 )
 
-        # Right Column - Output
-        with gr.Column(scale=2):
-            gr.Markdown("### Generated Cards")
-            
-            # Output Format Documentation
-            with gr.Accordion("Output Format", open=True):
-                gr.Markdown(
-                    """
-                    The generated CSV will contain the following fields:
-                    * **Index**: Unique identifier for each card
-                    * **Topic**: The subject subtopic this card belongs to
-                    * **Question**: The front of the flashcard
-                    * **Answer**: The core answer
-                    * **Explanation**: Detailed explanation of the concept
-                    * **Example**: A practical example to reinforce learning
-                    """
-                )
-            
-            # Dataframe Output
-            output = gr.Dataframe(
-                headers=[
-                    "Index",
-                    "Topic",
-                    "Question",
-                    "Answer",
-                    "Explanation",
-                    "Example",
-                ],
-                interactive=True,
-                elem_classes="tall-dataframe",
-                wrap=True,
-                column_widths=[50, 100, 200, 200, 250, 200],
-            )
+                # Export Controls
+                with gr.Row():
+                    export_button = gr.Button("Export to CSV", variant="secondary")
+                    download_link = gr.File(interactive=False, visible=False)
 
-            # Export Controls
-            with gr.Row():
-                export_button = gr.Button("Export to CSV", variant="secondary")
-                download_link = gr.File(interactive=False, visible=False)
+        # Add near the top of the Blocks
+        with gr.Row():
+            progress = gr.HTML(visible=False)
+            total_cards = gr.Number(label="Total Cards Generated", value=0, visible=False)
 
-    # Simplified event handlers
-    generate_button.click(
-        fn=generate_cards,
-        inputs=[
-            api_key_input,
-            subject,
-            topic_number,
-            cards_per_topic,
-            preference_prompt,
-        ],
-        outputs=output,
-        show_progress="full",
-    )
+        # Simplified event handlers
+        generate_button.click(
+            fn=generate_cards,
+            inputs=[
+                api_key_input,
+                subject,
+                topic_number,
+                cards_per_topic,
+                preference_prompt,
+            ],
+            outputs=[output, progress, total_cards],
+            show_progress=True,
+        )
 
-    export_button.click(
-        fn=export_csv,
-        inputs=output,
-        outputs=download_link,
-        show_progress="full",
-    )
+        export_button.click(
+            fn=export_csv,
+            inputs=output,
+            outputs=download_link,
+            show_progress="full",
+        )
 
 if __name__ == "__main__":
     logger.info("Starting AnkiGen application")
