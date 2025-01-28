@@ -9,6 +9,11 @@ import sys
 from functools import lru_cache
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 import hashlib
+import genanki
+import random
+import json
+import tempfile
+from pathlib import Path
 
 
 class Step(BaseModel):
@@ -317,22 +322,181 @@ def generate_cards(
     return flattened_data, final_html, total
 
 
-def export_csv(d):
-    MIN_ROWS = 2
+# Add these constants after the imports
+BASIC_MODEL = genanki.Model(
+    random.randrange(1 << 30, 1 << 31),  # Random model ID
+    'AnkiGen Basic',
+    fields=[
+        {'name': 'Question'},
+        {'name': 'Answer'},
+        {'name': 'Explanation'},
+        {'name': 'Example'},
+    ],
+    templates=[{
+        'name': 'Card 1',
+        'qfmt': '''
+            <div class="card question">
+                <div class="content">{{Question}}</div>
+            </div>
+        ''',
+        'afmt': '''
+            <div class="card answer">
+                <div class="question">{{Question}}</div>
+                <hr>
+                <div class="content">
+                    <div class="answer-section">
+                        <h3>Answer:</h3>
+                        <div>{{Answer}}</div>
+                    </div>
+                    
+                    <div class="explanation-section">
+                        <h3>Explanation:</h3>
+                        <div>{{Explanation}}</div>
+                    </div>
+                    
+                    <div class="example-section">
+                        <h3>Example:</h3>
+                        <pre><code>{{Example}}</code></pre>
+                    </div>
+                </div>
+            </div>
+        ''',
+    }],
+    css='''
+        .card {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            font-size: 16px;
+            text-align: left;
+            color: #333;
+            line-height: 1.5;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            background: #fff;
+        }
+        
+        .question {
+            font-size: 1.2em;
+            font-weight: 500;
+            color: #2563eb;
+            margin-bottom: 1em;
+        }
+        
+        hr {
+            border: none;
+            border-top: 2px solid #e5e7eb;
+            margin: 1.5em 0;
+        }
+        
+        h3 {
+            color: #1f2937;
+            font-size: 1.1em;
+            margin: 1em 0 0.5em 0;
+        }
+        
+        .answer-section {
+            background: #f0f9ff;
+            padding: 1em;
+            border-radius: 6px;
+            margin: 1em 0;
+        }
+        
+        .explanation-section {
+            background: #f0fdf4;
+            padding: 1em;
+            border-radius: 6px;
+            margin: 1em 0;
+        }
+        
+        .example-section {
+            background: #fef2f2;
+            padding: 1em;
+            border-radius: 6px;
+            margin: 1em 0;
+        }
+        
+        pre code {
+            display: block;
+            background: #1f2937;
+            color: #e5e7eb;
+            padding: 1em;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-family: 'Fira Code', monospace;
+        }
+    '''
+)
 
-    if d is None:
+# Split the export functions
+def export_csv(data):
+    """Export the generated cards as a CSV file"""
+    if data is None:
         raise gr.Error("No data to export. Please generate cards first.")
         
-    if len(d) < MIN_ROWS:
-        raise gr.Error(f"Need at least {MIN_ROWS} cards to export.")
+    if len(data) < 2:  # Minimum 2 cards
+        raise gr.Error("Need at least 2 cards to export.")
 
     try:
         gr.Info("💾 Exporting to CSV...")
-        d.to_csv("anki_deck.csv", index=False)
-        gr.Info("✅ Export complete!")
-        return gr.File(value="anki_deck.csv", visible=True)
+        csv_path = "anki_cards.csv"
+        data.to_csv(csv_path, index=False)
+        gr.Info("✅ CSV export complete!")
+        return gr.File(value=csv_path, visible=True)
+    
     except Exception as e:
+        logger.error(f"Failed to export CSV: {str(e)}", exc_info=True)
         raise gr.Error(f"Failed to export CSV: {str(e)}")
+
+def export_deck(data, subject):
+    """Export the generated cards as an Anki deck"""
+    if data is None:
+        raise gr.Error("No data to export. Please generate cards first.")
+        
+    if len(data) < 2:  # Minimum 2 cards
+        raise gr.Error("Need at least 2 cards to export.")
+
+    try:
+        gr.Info("💾 Creating Anki deck...")
+        
+        # Create a new deck with a random ID
+        deck_id = random.randrange(1 << 30, 1 << 31)
+        deck = genanki.Deck(deck_id, f"AnkiGen - {subject}")
+        
+        # Convert DataFrame to records for easier access
+        records = data.to_dict('records')
+        
+        # Add notes to the deck
+        for record in records:
+            note = genanki.Note(
+                model=BASIC_MODEL,
+                fields=[
+                    str(record['Question']),
+                    str(record['Answer']),
+                    str(record['Explanation']),
+                    str(record['Example'])
+                ]
+            )
+            deck.add_note(note)
+        
+        # Create a temporary directory for the package
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "anki_deck.apkg"
+            package = genanki.Package(deck)
+            package.write_to_file(output_path)
+            
+            # Copy to a more permanent location
+            final_path = "anki_deck.apkg"
+            with open(output_path, 'rb') as src, open(final_path, 'wb') as dst:
+                dst.write(src.read())
+        
+        gr.Info("✅ Anki deck export complete!")
+        return gr.File(value=final_path, visible=True)
+    
+    except Exception as e:
+        logger.error(f"Failed to export Anki deck: {str(e)}", exc_info=True)
+        raise gr.Error(f"Failed to export Anki deck: {str(e)}")
 
 
 # Add this near the top where we define our CSS
@@ -484,8 +648,13 @@ with gr.Blocks(
 
                 # Export Controls
                 with gr.Row():
-                    export_button = gr.Button("Export to CSV", variant="secondary")
-                    download_link = gr.File(interactive=False, visible=False)
+                    with gr.Column():
+                        gr.Markdown("### Export Options")
+                        with gr.Row():
+                            export_csv_button = gr.Button("Export to CSV", variant="secondary")
+                            export_anki_button = gr.Button("Export to Anki Deck", variant="secondary")
+                        download_csv = gr.File(label="Download CSV", interactive=False, visible=False)
+                        download_anki = gr.File(label="Download Anki Deck", interactive=False, visible=False)
 
         # Add near the top of the Blocks
         with gr.Row():
@@ -506,10 +675,17 @@ with gr.Blocks(
             show_progress=True,
         )
 
-        export_button.click(
+        export_csv_button.click(
             fn=export_csv,
-            inputs=output,
-            outputs=download_link,
+            inputs=[output],
+            outputs=download_csv,
+            show_progress="full",
+        )
+
+        export_anki_button.click(
+            fn=export_deck,
+            inputs=[output, subject],
+            outputs=download_anki,
             show_progress="full",
         )
 
