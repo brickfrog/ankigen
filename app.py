@@ -9,6 +9,9 @@ import logging
 from logging.handlers import RotatingFileHandler
 import sys
 import json
+from functools import lru_cache
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+import hashlib
 
 
 class Step(BaseModel):
@@ -83,10 +86,45 @@ def setup_logging():
 logger = setup_logging()
 
 
+# Replace the caching implementation with a proper cache dictionary
+_response_cache = {}  # Global cache dictionary
+
+@lru_cache(maxsize=100)
+def get_cached_response(cache_key: str):
+    """Get response from cache"""
+    return _response_cache.get(cache_key)
+
+def set_cached_response(cache_key: str, response):
+    """Set response in cache"""
+    _response_cache[cache_key] = response
+
+def create_cache_key(prompt: str, model: str) -> str:
+    """Create a unique cache key for the API request"""
+    return hashlib.md5(f"{model}:{prompt}".encode()).hexdigest()
+
+
+# Add retry decorator for API calls
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    retry=retry_if_exception_type(Exception),
+    before_sleep=lambda retry_state: logger.warning(
+        f"Retrying API call (attempt {retry_state.attempt_number})"
+    )
+)
 def structured_output_completion(
     client, model, response_format, system_prompt, user_prompt
 ):
+    """Make API call with retry logic and caching"""
+    cache_key = create_cache_key(f"{system_prompt}:{user_prompt}", model)
+    cached_response = get_cached_response(cache_key)
+    
+    if cached_response is not None:
+        logger.info("Using cached response")
+        return cached_response
+
     try:
+        logger.debug(f"Making API call with model {model}")
         completion = client.beta.chat.completions.parse(
             model=model,
             messages=[
@@ -96,29 +134,69 @@ def structured_output_completion(
             response_format=response_format,
         )
 
-    except Exception as e:
-        print(f"An error occurred during the API call: {e}")
-        return None
-
-    try:
         if not hasattr(completion, "choices") or not completion.choices:
-            print("No choices returned in the completion.")
+            logger.warning("No choices returned in the completion.")
             return None
 
         first_choice = completion.choices[0]
         if not hasattr(first_choice, "message"):
-            print("No message found in the first choice.")
+            logger.warning("No message found in the first choice.")
             return None
 
         if not hasattr(first_choice.message, "parsed"):
-            print("Parsed message not available in the first choice.")
+            logger.warning("Parsed message not available in the first choice.")
             return None
 
-        return first_choice.message.parsed
+        result = first_choice.message.parsed
+        # Cache the successful response
+        set_cached_response(cache_key, result)
+        return result
 
     except Exception as e:
-        print(f"An error occurred while processing the completion: {e}")
-        raise gr.Error(f"Processing error: {e}")
+        logger.error(f"API call failed: {str(e)}", exc_info=True)
+        raise
+
+
+def generate_cards_batch(
+    client,
+    model: str,
+    topic: str,
+    num_cards: int,
+    system_prompt: str,
+    batch_size: int = 3
+) -> List[Card]:
+    """Generate cards in batches to avoid overloading the API"""
+    cards = []
+    remaining = num_cards
+    
+    while remaining > 0:
+        current_batch = min(batch_size, remaining)
+        
+        card_prompt = f"""
+        You are to generate {current_batch} cards on: "{topic}".
+        Questions should cover both sample problems and concepts.
+        Use the explanation field to help the user understand the reason behind things 
+        and maximize learning. Additionally, offer tips (performance, gotchas, etc.).
+        """
+        
+        try:
+            batch_response = structured_output_completion(
+                client, model, CardList, system_prompt, card_prompt
+            )
+            if batch_response and hasattr(batch_response, "cards"):
+                cards.extend(batch_response.cards)
+                remaining -= len(batch_response.cards)
+                logger.info(f"Generated batch of {len(batch_response.cards)} cards")
+            else:
+                logger.warning(f"Failed to generate batch for topic {topic}")
+                break  # Break if we get an invalid response
+                
+        except Exception as e:
+            logger.error(f"Batch generation failed: {str(e)}", exc_info=True)
+            gr.Warning(f"Failed to generate some cards for '{topic}'")
+            break  # Break on error to avoid infinite loops
+            
+    return cards
 
 
 def generate_cards(
@@ -186,37 +264,28 @@ def generate_cards(
     except Exception as e:
         raise gr.Error(f"Topic generation failed: {str(e)}")
 
-    # Card generation with progress updates
+    # Use batch processing for card generation
     for i, topic in enumerate(topic_list, 1):
         gr.Info(f"📝 Generating cards for topic {i}/{len(topic_list)}: {topic}")
         
-        card_prompt = f"""
-        You are to generate {cards_per_topic} cards on {subject}: "{topic}" 
-        keeping in mind the user's preferences: {preference_prompt}.
-        
-        Questions should cover both sample problems and concepts.
-
-        Use the explanation field to help the user understand the reason behind things 
-        and maximize learning. Additionally, offer tips (performance, gotchas, etc.).
-        """
-        
         try:
-            cards = structured_output_completion(
-                client, model, CardList, system_prompt, card_prompt
+            cards = generate_cards_batch(
+                client,
+                model,
+                topic,
+                cards_per_topic,
+                system_prompt,
+                batch_size=3
             )
-            if cards is None:
-                gr.Warning(f"Skipping topic '{topic}' - failed to generate cards")
-                continue
-                
-            if not hasattr(cards, "topic") or not hasattr(cards, "cards"):
-                gr.Warning(f"Skipping topic '{topic}' - invalid card format")
-                continue
-                
-            all_card_lists.append(cards)
-            gr.Info(f"✅ Generated {len(cards.cards)} cards for {topic}")
+            
+            if cards:
+                card_list = CardList(topic=topic, cards=cards)
+                all_card_lists.append(card_list)
+                gr.Info(f"✅ Generated {len(cards)} cards for {topic}")
             
         except Exception as e:
-            gr.Warning(f"Failed to generate cards for '{topic}': {str(e)}")
+            logger.error(f"Failed to generate cards for topic {topic}: {str(e)}")
+            gr.Warning(f"Failed to generate cards for '{topic}'")
             continue
 
     if not all_card_lists:
@@ -386,10 +455,6 @@ with gr.Blocks(
             with gr.Row():
                 export_button = gr.Button("Export to CSV", variant="secondary")
                 download_link = gr.File(interactive=False, visible=False)
-                clear_button = gr.ClearButton(
-                    components=[subject, preference_prompt],
-                    value="Clear Form",
-                )
 
     # Simplified event handlers
     generate_button.click(
