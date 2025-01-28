@@ -84,29 +84,27 @@ def generate_cards(
     cards_per_topic=2,
     preference_prompt="assume I'm a beginner",
 ):
-    """
-    Generates flashcards for a given subject.
-
-    Parameters:
-    - subject (str): The subject to generate cards for.
-    - topic_number (int): Number of topics to generate.
-    - cards_per_topic (int): Number of cards per topic.
-    - preference_prompt (str): User preferences to consider.
-
-    Returns:
-    - List[List[str]]: A list of rows containing
-    [topic, question, answer, explanation, example].
-    """
-
-    gr.Info("Starting process")
-
+    # Input validation
     if not api_key_input:
-        return gr.Error("Error: OpenAI API key is required.")
+        raise gr.Error("OpenAI API key is required")
+    if not api_key_input.startswith("sk-"):
+        raise gr.Error("Invalid API key format. OpenAI keys should start with 'sk-'")
+    if not subject.strip():
+        raise gr.Error("Subject is required")
+    
+    gr.Info("🚀 Starting card generation...")
+    
+    try:
+        client = OpenAI(api_key=api_key_input)
+    except Exception as e:
+        raise gr.Error(f"Failed to initialize OpenAI client: {str(e)}")
 
-    client = OpenAI(api_key=api_key_input)
+    # Update model name - looks like a typo in original
     model = "gpt-4o-mini"
 
     all_card_lists = []
+    
+    gr.Info(f"📚 Generating {topic_number} topics for {subject}...")
 
     system_prompt = f"""
     You are an expert in {subject}, assisting the user to master the topic while 
@@ -123,42 +121,44 @@ def generate_cards(
             client, model, Topics, system_prompt, topic_prompt
         )
         if topics_response is None:
-            print("Failed to generate topics.")
-            return []
+            raise gr.Error("Failed to generate topics. Please try again.")
         if not hasattr(topics_response, "result") or not topics_response.result:
-            print("Invalid topics response format.")
-            return []
+            raise gr.Error("Invalid response format from API. Please try again.")
+            
         topic_list = [
             item for subtopic in topics_response.result for item in subtopic.result
         ][:topic_number]
-    except Exception as e:
-        raise gr.Error(f"Topic generation failed due to {e}")
-
-    for topic in topic_list:
-        card_prompt = f"""
-        You are to generate {cards_per_topic} cards on {subject}: "{topic}" 
-        keeping in mind the user's preferences: {preference_prompt}.
         
-        Questions should cover both sample problems and concepts.
+        gr.Info(f"✨ Generated {len(topic_list)} topics successfully!")
+        
+    except Exception as e:
+        raise gr.Error(f"Topic generation failed: {str(e)}")
 
-        Use the explanation field to help the user understand the reason behind things 
-        and maximize learning. Additionally, offer tips (performance, gotchas, etc.).
-        """
-
+    # Card generation with progress updates
+    for i, topic in enumerate(topic_list, 1):
+        gr.Info(f"📝 Generating cards for topic {i}/{len(topic_list)}: {topic}")
+        
         try:
             cards = structured_output_completion(
                 client, model, CardList, system_prompt, card_prompt
             )
             if cards is None:
-                print(f"Failed to generate cards for topic '{topic}'.")
+                gr.Warning(f"Skipping topic '{topic}' - failed to generate cards")
                 continue
+                
             if not hasattr(cards, "topic") or not hasattr(cards, "cards"):
-                print(f"Invalid card response format for topic '{topic}'.")
+                gr.Warning(f"Skipping topic '{topic}' - invalid card format")
                 continue
+                
             all_card_lists.append(cards)
+            gr.Info(f"✅ Generated {len(cards.cards)} cards for {topic}")
+            
         except Exception as e:
-            print(f"An error occurred while generating cards for topic '{topic}': {e}")
+            gr.Warning(f"Failed to generate cards for '{topic}': {str(e)}")
             continue
+
+    if not all_card_lists:
+        raise gr.Error("Failed to generate any valid cards. Please try again.")
 
     flattened_data = []
 
@@ -189,13 +189,19 @@ def generate_cards(
 def export_csv(d):
     MIN_ROWS = 2
 
+    if d is None:
+        raise gr.Error("No data to export. Please generate cards first.")
+        
     if len(d) < MIN_ROWS:
-        gr.Warning(f"The dataframe has fewer than {MIN_ROWS} rows. Nothing to export.")
-        return None
+        raise gr.Error(f"Need at least {MIN_ROWS} cards to export.")
 
-    gr.Info("Exporting...")
-    d.to_csv("anki_deck.csv", index=False)
-    return gr.File(value="anki_deck.csv", visible=True)
+    try:
+        gr.Info("💾 Exporting to CSV...")
+        d.to_csv("anki_deck.csv", index=False)
+        gr.Info("✅ Export complete!")
+        return gr.File(value="anki_deck.csv", visible=True)
+    except Exception as e:
+        raise gr.Error(f"Failed to export CSV: {str(e)}")
 
 
 with gr.Blocks(
