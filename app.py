@@ -138,6 +138,16 @@ def generate_cards(
     for i, topic in enumerate(topic_list, 1):
         gr.Info(f"📝 Generating cards for topic {i}/{len(topic_list)}: {topic}")
         
+        card_prompt = f"""
+        You are to generate {cards_per_topic} cards on {subject}: "{topic}" 
+        keeping in mind the user's preferences: {preference_prompt}.
+        
+        Questions should cover both sample problems and concepts.
+
+        Use the explanation field to help the user understand the reason behind things 
+        and maximize learning. Additionally, offer tips (performance, gotchas, etc.).
+        """
+        
         try:
             cards = structured_output_completion(
                 client, model, CardList, system_prompt, card_prompt
@@ -216,37 +226,69 @@ with gr.Blocks(
         with gr.Column(scale=1):
             gr.Markdown("### Configuration")
 
+            # Basic Settings
             api_key_input = gr.Textbox(
                 label="OpenAI API Key",
                 type="password",
                 placeholder="Enter your OpenAI API key",
                 value=os.getenv("OPENAI_API_KEY", ""),
+                info="Your OpenAI API key starting with 'sk-'",
             )
             subject = gr.Textbox(
                 label="Subject",
                 placeholder="Enter the subject, e.g., 'Basic SQL Concepts'",
+                info="The topic you want to generate flashcards for",
             )
-            topic_number = gr.Slider(
-                label="Number of Topics", minimum=2, maximum=20, step=1, value=2
-            )
-            cards_per_topic = gr.Slider(
-                label="Cards per Topic", minimum=2, maximum=30, step=1, value=3
-            )
-            preference_prompt = gr.Textbox(
-                label="Preference Prompt",
-                placeholder=
-                """Any preferences? For example: Learning level, e.g., "Assume I'm a beginner" or "Target an advanced audience" Content scope, e.g., "Only cover up until subqueries in SQL" or "Focus on organic chemistry basics""", #noqa
-            )
-            generate_button = gr.Button("Generate Cards")
+
+            # Advanced Settings in Accordion
+            with gr.Accordion("Advanced Settings", open=False):
+                topic_number = gr.Slider(
+                    label="Number of Topics",
+                    minimum=2,
+                    maximum=20,
+                    step=1,
+                    value=2,
+                    info="How many distinct topics to cover within the subject",
+                )
+                cards_per_topic = gr.Slider(
+                    label="Cards per Topic",
+                    minimum=2,
+                    maximum=30,
+                    step=1,
+                    value=3,
+                    info="How many flashcards to generate for each topic",
+                )
+                preference_prompt = gr.Textbox(
+                    label="Learning Preferences",
+                    placeholder="e.g., 'Assume I'm a beginner' or 'Focus on practical examples'",
+                    info="Customize how the content is presented",
+                    lines=3,
+                )
+
+            # Generation Button with Loading State
+            with gr.Row():
+                generate_button = gr.Button("Generate Cards", variant="primary")
+                clear_button = gr.ClearButton(
+                    components=[subject, preference_prompt, output],
+                    value="Clear All",
+                )
+
         with gr.Column(scale=2):
             gr.Markdown("### Generated Cards")
-            gr.Markdown(
-                """
-                Subject to change: currently exports a .csv with the following fields, you can
-                create a new note type with these fields to handle importing.: 
-                <b>Index, Topic, Question, Answer, Explanation, Example</b>
-                """
-            )
+            with gr.Accordion("Output Format", open=True):
+                gr.Markdown(
+                    """
+                    The generated CSV will contain the following fields:
+                    * **Index**: Unique identifier for each card
+                    * **Topic**: The subject subtopic this card belongs to
+                    * **Question**: The front of the flashcard
+                    * **Answer**: The core answer
+                    * **Explanation**: Detailed explanation of the concept
+                    * **Example**: A practical example to reinforce learning
+                    """
+                )
+            
+            # Improved Dataframe with better styling
             output = gr.Dataframe(
                 headers=[
                     "Index",
@@ -257,11 +299,16 @@ with gr.Blocks(
                     "Example",
                 ],
                 interactive=False,
-                elem_classes="tall-dataframe"
+                elem_classes="tall-dataframe",
+                wrap=True,  # Allows text wrapping in cells
+                column_widths=[50, 100, 200, 200, 250, 200],  # Customize column widths
             )
-            export_button = gr.Button("Export to CSV")
-            download_link = gr.File(interactive=False, visible=False)
+            
+            with gr.Row():
+                export_button = gr.Button("Export to CSV", variant="secondary")
+                download_link = gr.File(interactive=False, visible=False)
 
+    # Add loading indicator during generation
     generate_button.click(
         fn=generate_cards,
         inputs=[
@@ -272,9 +319,15 @@ with gr.Blocks(
             preference_prompt,
         ],
         outputs=output,
+        show_progress="full",  # Shows a progress bar during generation
     )
 
-    export_button.click(fn=export_csv, inputs=output, outputs=download_link)
+    export_button.click(
+        fn=export_csv,
+        inputs=output,
+        outputs=download_link,
+        show_progress="full",
+    )
 
 if __name__ == "__main__":
     ankigen.launch(share=False, favicon_path="./favicon.ico")
