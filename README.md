@@ -17,13 +17,13 @@ AnkiGen is a Gradio-based web application that generates Anki-compatible CSV fil
 - Generate Anki cards for various subjects
 - Customizable number of topics and cards per topic
 - User-friendly interface powered by Gradio
-- Exports to CSV format compatible with Anki import
-- Utilizes LLMs for high-quality content generation
+- Exports to CSV for manual import or .apkg format with out of the box css styling
+- Utilizes OpenAI's structured output to mimic chain of thought to minimize hallucinations
 
 ## TODO
 
-- [ ] model dropdown - uses gpt4o-mini by default
-- [ ] cloze (checkbox?)
+- [ ] cloze cards? (checkbox?)
+- [ ] File upload / parsing longer texts / books as input?
 
 ## Screenshot
 
@@ -32,18 +32,21 @@ AnkiGen is a Gradio-based web application that generates Anki-compatible CSV fil
 
 ## Installation for Local Use
 
+Preferred usage: [uv](https://github.com/astral-sh/uv)
+
 1. Clone this repository:
 
-```
+```bash
 git clone https://github.com/brickfrog/ankigen.git
 cd ankigen
+uv venv
 ```
 
 
 2. Install the required dependencies:
 
-```
-pip install -r requirements.txt
+```bash
+uv pip install -r requirements.txt
 ```
 
 3. Set up your OpenAI API key (required for LLM functionality).
@@ -52,8 +55,8 @@ pip install -r requirements.txt
 
 1. Run the application:
 
-```
-gradio app.py --demo-name ankigen
+```bash
+uv run gradio app.py --demo-name ankigen
 ```
 
 2. Open your web browser and navigate to the provided local URL (typically `http://127.0.0.1:7860`).
@@ -67,25 +70,13 @@ gradio app.py --demo-name ankigen
 
 4. Review the generated cards in the interface.
 
-5. Click "Export to CSV" to download the Anki-compatible file.
-
-## CSV Format
-
-The generated CSV file includes the following fields:
-- Index
-- Topic
-- Question
-- Answer
-- Explanation
-- Example
-
-You can create a new note type in Anki with these fields to handle importing.
+5. Click "Export to CSV" to download the Anki-compatible file or Export to  Anki Deck to export as a .apkg that can be imported into Anki.
 
 ## Development
 
 This project is built with:
 - Python 3.12
-- Gradio 4.44.0
+- Gradio 5.13.1
 
 To contribute or modify:
 1. Make your changes in `app.py`
