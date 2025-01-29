@@ -187,38 +187,6 @@ def structured_output_completion(
         raise
 
 
-def generate_learning_sequence(client, model, topic, num_cards, system_prompt):
-    """Generate an optimized learning sequence with verification steps"""
-    
-    sequence_prompt = f"""
-    Create a learning sequence for "{topic}" with {num_cards} cards.
-    For each concept:
-    1. Break it down into prerequisites and outcomes
-    2. Identify potential misconceptions
-    3. Generate cards with explicit thought process
-    4. Include verification steps for accuracy
-    5. Suggest optimal study order
-    
-    Each card should build upon previous knowledge and include:
-    - Clear connection to prerequisites
-    - Practical examples
-    - Common pitfall warnings
-    - Verification steps
-    """
-    
-    try:
-        sequence = structured_output_completion(
-            client, model, LearningSequence, system_prompt, sequence_prompt
-        )
-        
-        logger.info(f"Generated learning sequence for {topic}")
-        return sequence
-        
-    except Exception as e:
-        logger.error(f"Failed to generate learning sequence: {str(e)}")
-        raise
-
-
 def generate_cards_batch(
     client,
     model,
@@ -1062,7 +1030,7 @@ with gr.Blocks(
                 # Add mode selection
                 generation_mode = gr.Radio(
                     choices=[
-                        "subject",  # Just pass the values directly
+                        "subject",
                         "path"
                     ],
                     value="subject",
@@ -1103,7 +1071,7 @@ with gr.Blocks(
                 with gr.Accordion("Advanced Settings", open=False):
                     model_choice = gr.Dropdown(
                         choices=[
-                            "gpt-4o-mini",  # Just pass the values directly
+                            "gpt-4o-mini",
                             "gpt-4o",
                             "o1"
                         ],
@@ -1161,8 +1129,8 @@ with gr.Blocks(
                         variant="primary"
                     )
                     gr.Markdown(
-                        "*Click to copy subjects to main input for card generation*",  # Added explanation below button
-                        elem_classes="hint-text"  # Optional: for styling
+                        "*Click to copy subjects to main input for card generation*",
+                        elem_classes="hint-text"
                     )
                 
                 # Existing output components
