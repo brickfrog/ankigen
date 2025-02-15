@@ -24,6 +24,7 @@ AnkiGen is a Gradio-based web application that generates Anki-compatible CSV fil
 
 - [ ] cloze cards? (checkbox?)
 - [ ] File upload / parsing longer texts / books as input?
+- [ ] Novelty Fields / Custom? [ELI5], etc.
 
 ## Screenshot
 
