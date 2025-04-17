@@ -7,7 +7,12 @@ import logging
 from logging.handlers import RotatingFileHandler
 import sys
 from functools import lru_cache
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
 import hashlib
 import genanki
 import random
@@ -77,22 +82,20 @@ class LearningSequence(BaseModel):
 
 def setup_logging():
     """Configure logging to both file and console"""
-    logger = logging.getLogger('ankigen')
+    logger = logging.getLogger("ankigen")
     logger.setLevel(logging.DEBUG)
 
     # Create formatters
     detailed_formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
-    simple_formatter = logging.Formatter(
-        '%(levelname)s: %(message)s'
-    )
+    simple_formatter = logging.Formatter("%(levelname)s: %(message)s")
 
     # File handler (detailed logging)
     file_handler = RotatingFileHandler(
-        'ankigen.log',
-        maxBytes=1024*1024,  # 1MB
-        backupCount=5
+        "ankigen.log",
+        maxBytes=1024 * 1024,  # 1MB
+        backupCount=5,
     )
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(detailed_formatter)
@@ -116,14 +119,17 @@ logger = setup_logging()
 # Replace the caching implementation with a proper cache dictionary
 _response_cache = {}  # Global cache dictionary
 
+
 @lru_cache(maxsize=100)
 def get_cached_response(cache_key: str):
     """Get response from cache"""
     return _response_cache.get(cache_key)
 
+
 def set_cached_response(cache_key: str, response):
     """Set response in cache"""
     _response_cache[cache_key] = response
+
 
 def create_cache_key(prompt: str, model: str) -> str:
     """Create a unique cache key for the API request"""
@@ -137,7 +143,7 @@ def create_cache_key(prompt: str, model: str) -> str:
     retry=retry_if_exception_type(Exception),
     before_sleep=lambda retry_state: logger.warning(
         f"Retrying API call (attempt {retry_state.attempt_number})"
-    )
+    ),
 )
 def structured_output_completion(
     client, model, response_format, system_prompt, user_prompt
@@ -145,17 +151,17 @@ def structured_output_completion(
     """Make API call with retry logic and caching"""
     cache_key = create_cache_key(f"{system_prompt}:{user_prompt}", model)
     cached_response = get_cached_response(cache_key)
-    
+
     if cached_response is not None:
         logger.info("Using cached response")
         return cached_response
 
     try:
         logger.debug(f"Making API call with model {model}")
-        
+
         # Add JSON instruction to system prompt
         system_prompt = f"{system_prompt}\nProvide your response as a JSON object matching the specified schema."
-        
+
         completion = client.chat.completions.create(
             model=model,
             messages=[
@@ -163,7 +169,7 @@ def structured_output_completion(
                 {"role": "user", "content": user_prompt.strip()},
             ],
             response_format={"type": "json_object"},
-            temperature=0.7
+            temperature=0.7,
         )
 
         if not hasattr(completion, "choices") or not completion.choices:
@@ -177,7 +183,7 @@ def structured_output_completion(
 
         # Parse the JSON response
         result = json.loads(first_choice.message.content)
-        
+
         # Cache the successful response
         set_cached_response(cache_key, result)
         return result
@@ -187,14 +193,7 @@ def structured_output_completion(
         raise
 
 
-def generate_cards_batch(
-    client,
-    model,
-    topic,
-    num_cards,
-    system_prompt,
-    batch_size=3
-):
+def generate_cards_batch(client, model, topic, num_cards, system_prompt, batch_size=3):
     """Generate a batch of cards for a topic"""
     cards_prompt = f"""
     Generate {num_cards} flashcards for the topic: {topic}
@@ -224,11 +223,7 @@ def generate_cards_batch(
     try:
         logger.info(f"Generated learning sequence for {topic}")
         response = structured_output_completion(
-            client,
-            model,
-            {"type": "json_object"},
-            system_prompt,
-            cards_prompt
+            client, model, {"type": "json_object"}, system_prompt, cards_prompt
         )
 
         if not response or "cards" not in response:
@@ -241,7 +236,7 @@ def generate_cards_batch(
             card = Card(
                 front=CardFront(**card_data["front"]),
                 back=CardBack(**card_data["back"]),
-                metadata=card_data.get("metadata", {})
+                metadata=card_data.get("metadata", {}),
             )
             cards.append(card)
 
@@ -257,32 +252,33 @@ AVAILABLE_MODELS = [
     {
         "value": "gpt-4o-mini",  # Default model
         "label": "gpt-4o Mini (Fastest)",
-        "description": "Balanced speed and quality"
+        "description": "Balanced speed and quality",
     },
     {
         "value": "gpt-4o",
         "label": "gpt-4o (Better Quality)",
-        "description": "Higher quality, slower generation"
+        "description": "Higher quality, slower generation",
     },
     {
         "value": "o1",
         "label": "o1 (Best Quality)",
-        "description": "Highest quality, longest generation time"
-    }
+        "description": "Highest quality, longest generation time",
+    },
 ]
 
 GENERATION_MODES = [
     {
         "value": "subject",
         "label": "Single Subject",
-        "description": "Generate cards for a specific topic"
+        "description": "Generate cards for a specific topic",
     },
     {
         "value": "path",
         "label": "Learning Path",
-        "description": "Break down a job description or learning goal into subjects"
-    }
+        "description": "Break down a job description or learning goal into subjects",
+    },
 ]
+
 
 def generate_cards(
     api_key_input,
@@ -293,7 +289,9 @@ def generate_cards(
     preference_prompt="assume I'm a beginner",
 ):
     logger.info(f"Starting card generation for subject: {subject}")
-    logger.debug(f"Parameters: topics={topic_number}, cards_per_topic={cards_per_topic}")
+    logger.debug(
+        f"Parameters: topics={topic_number}, cards_per_topic={cards_per_topic}"
+    )
 
     # Input validation
     if not api_key_input:
@@ -305,9 +303,9 @@ def generate_cards(
     if not subject.strip():
         logger.warning("No subject provided")
         raise gr.Error("Subject is required")
-    
+
     gr.Info("🚀 Starting card generation...")
-    
+
     try:
         logger.debug("Initializing OpenAI client")
         client = OpenAI(api_key=api_key_input)
@@ -318,9 +316,9 @@ def generate_cards(
     model = model_name
     flattened_data = []
     total = 0
-    
+
     progress_tracker = gr.Progress(track_tqdm=True)
-    
+
     system_prompt = f"""
     You are an expert educator in {subject}, creating an optimized learning sequence.
     Your goal is to:
@@ -357,30 +355,21 @@ def generate_cards(
     try:
         logger.info("Generating topics...")
         topics_response = structured_output_completion(
-            client,
-            model,
-            {"type": "json_object"},
-            system_prompt,
-            topic_prompt
+            client, model, {"type": "json_object"}, system_prompt, topic_prompt
         )
-        
+
         if not topics_response or "topics" not in topics_response:
             logger.error("Invalid topics response format")
             raise gr.Error("Failed to generate topics. Please try again.")
 
         topics = topics_response["topics"]
-        
+
         gr.Info(f"✨ Generated {len(topics)} topics successfully!")
-        
+
         # Generate cards for each topic
-        for i, topic in enumerate(progress_tracker.tqdm(topics, desc="Generating cards")):
-            progress_html = f"""
-            <div style="text-align: center">
-                <p>Generating cards for topic {i+1}/{len(topics)}: {topic["name"]}</p>
-                <p>Cards generated so far: {total}</p>
-            </div>
-            """
-            
+        for i, topic in enumerate(
+            progress_tracker.tqdm(topics, desc="Generating cards")
+        ):
             try:
                 cards = generate_cards_batch(
                     client,
@@ -388,14 +377,14 @@ def generate_cards(
                     topic["name"],
                     cards_per_topic,
                     system_prompt,
-                    batch_size=3
+                    batch_size=3,
                 )
-                
+
                 if cards:
                     for card_index, card in enumerate(cards, start=1):
-                        index = f"{i+1}.{card_index}"
+                        index = f"{i + 1}.{card_index}"
                         metadata = card.metadata or {}
-                        
+
                         row = [
                             index,
                             topic["name"],
@@ -406,15 +395,17 @@ def generate_cards(
                             metadata.get("prerequisites", []),
                             metadata.get("learning_outcomes", []),
                             metadata.get("misconceptions", []),
-                            metadata.get("difficulty", "beginner")
+                            metadata.get("difficulty", "beginner"),
                         ]
                         flattened_data.append(row)
                         total += 1
-                    
+
                     gr.Info(f"✅ Generated {len(cards)} cards for {topic['name']}")
-                
+
             except Exception as e:
-                logger.error(f"Failed to generate cards for topic {topic['name']}: {str(e)}")
+                logger.error(
+                    f"Failed to generate cards for topic {topic['name']}: {str(e)}"
+                )
                 gr.Warning(f"Failed to generate cards for '{topic['name']}'")
                 continue
 
@@ -424,7 +415,7 @@ def generate_cards(
             <p>Total cards generated: {total}</p>
         </div>
         """
-        
+
         # Convert to DataFrame with all columns
         df = pd.DataFrame(
             flattened_data,
@@ -438,10 +429,10 @@ def generate_cards(
                 "Prerequisites",
                 "Learning_Outcomes",
                 "Common_Misconceptions",
-                "Difficulty"
-            ]
+                "Difficulty",
+            ],
         )
-        
+
         return df, final_html, total
 
     except Exception as e:
@@ -452,20 +443,21 @@ def generate_cards(
 # Update the BASIC_MODEL definition with enhanced CSS/HTML
 BASIC_MODEL = genanki.Model(
     random.randrange(1 << 30, 1 << 31),
-    'AnkiGen Enhanced',
+    "AnkiGen Enhanced",
     fields=[
-        {'name': 'Question'},
-        {'name': 'Answer'},
-        {'name': 'Explanation'},
-        {'name': 'Example'},
-        {'name': 'Prerequisites'},
-        {'name': 'Learning_Outcomes'},
-        {'name': 'Common_Misconceptions'},
-        {'name': 'Difficulty'}
+        {"name": "Question"},
+        {"name": "Answer"},
+        {"name": "Explanation"},
+        {"name": "Example"},
+        {"name": "Prerequisites"},
+        {"name": "Learning_Outcomes"},
+        {"name": "Common_Misconceptions"},
+        {"name": "Difficulty"},
     ],
-    templates=[{
-        'name': 'Card 1',
-        'qfmt': '''
+    templates=[
+        {
+            "name": "Card 1",
+            "qfmt": """
             <div class="card question-side">
                 <div class="difficulty-indicator {{Difficulty}}"></div>
                 <div class="content">
@@ -482,8 +474,8 @@ BASIC_MODEL = genanki.Model(
                     this.parentElement.classList.toggle('show');
                 });
             </script>
-        ''',
-        'afmt': '''
+        """,
+            "afmt": """
             <div class="card answer-side">
                 <div class="content">
                     <div class="question-section">
@@ -528,9 +520,10 @@ BASIC_MODEL = genanki.Model(
                     </div>
                 </div>
             </div>
-        ''',
-    }],
-    css='''
+        """,
+        }
+    ],
+    css="""
         /* Base styles */
         .card {
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
@@ -714,15 +707,16 @@ BASIC_MODEL = genanki.Model(
         .tab-content.active {
             animation: fadeIn 0.2s ease-in-out;
         }
-    '''
+    """,
 )
+
 
 # Split the export functions
 def export_csv(data):
     """Export the generated cards as a CSV file"""
     if data is None:
         raise gr.Error("No data to export. Please generate cards first.")
-        
+
     if len(data) < 2:  # Minimum 2 cards
         raise gr.Error("Need at least 2 cards to export.")
 
@@ -732,51 +726,53 @@ def export_csv(data):
         data.to_csv(csv_path, index=False)
         gr.Info("✅ CSV export complete!")
         return gr.File(value=csv_path, visible=True)
-    
+
     except Exception as e:
         logger.error(f"Failed to export CSV: {str(e)}", exc_info=True)
         raise gr.Error(f"Failed to export CSV: {str(e)}")
+
 
 def export_deck(data, subject):
     """Export the generated cards as an Anki deck with pedagogical metadata"""
     if data is None:
         raise gr.Error("No data to export. Please generate cards first.")
-        
+
     if len(data) < 2:  # Minimum 2 cards
         raise gr.Error("Need at least 2 cards to export.")
 
     try:
         gr.Info("💾 Creating Anki deck...")
-        
+
         deck_id = random.randrange(1 << 30, 1 << 31)
         deck = genanki.Deck(deck_id, f"AnkiGen - {subject}")
-        
-        records = data.to_dict('records')
-        
+
+        records = data.to_dict("records")
+
         # Update the model to include metadata fields
         global BASIC_MODEL
         BASIC_MODEL = genanki.Model(
             random.randrange(1 << 30, 1 << 31),
-            'AnkiGen Enhanced',
+            "AnkiGen Enhanced",
             fields=[
-                {'name': 'Question'},
-                {'name': 'Answer'},
-                {'name': 'Explanation'},
-                {'name': 'Example'},
-                {'name': 'Prerequisites'},
-                {'name': 'Learning_Outcomes'},
-                {'name': 'Common_Misconceptions'},
-                {'name': 'Difficulty'}
+                {"name": "Question"},
+                {"name": "Answer"},
+                {"name": "Explanation"},
+                {"name": "Example"},
+                {"name": "Prerequisites"},
+                {"name": "Learning_Outcomes"},
+                {"name": "Common_Misconceptions"},
+                {"name": "Difficulty"},
             ],
-            templates=[{
-                'name': 'Card 1',
-                'qfmt': '''
+            templates=[
+                {
+                    "name": "Card 1",
+                    "qfmt": """
                     <div class="card question">
                         <div class="content">{{Question}}</div>
                         <div class="prerequisites">Prerequisites: {{Prerequisites}}</div>
                     </div>
-                ''',
-                'afmt': '''
+                """,
+                    "afmt": """
                     <div class="card answer">
                         <div class="question">{{Question}}</div>
                         <hr>
@@ -811,9 +807,10 @@ def export_deck(data, subject):
                             </div>
                         </div>
                     </div>
-                '''
-            }],
-            css='''
+                """,
+                }
+            ],
+            css="""
                 .card {
                     font-family: 'Inter', system-ui, -apple-system, sans-serif;
                     font-size: 16px;
@@ -880,40 +877,40 @@ def export_deck(data, subject):
                     font-family: 'Fira Code', 'Consolas', monospace;
                     font-size: 0.9em;
                 }
-            '''
+            """,
         )
-        
+
         # Add notes to the deck
         for record in records:
             note = genanki.Note(
                 model=BASIC_MODEL,
                 fields=[
-                    str(record['Question']),
-                    str(record['Answer']),
-                    str(record['Explanation']),
-                    str(record['Example']),
-                    str(record['Prerequisites']),
-                    str(record['Learning_Outcomes']),
-                    str(record['Common_Misconceptions']),
-                    str(record['Difficulty'])
-                ]
+                    str(record["Question"]),
+                    str(record["Answer"]),
+                    str(record["Explanation"]),
+                    str(record["Example"]),
+                    str(record["Prerequisites"]),
+                    str(record["Learning_Outcomes"]),
+                    str(record["Common_Misconceptions"]),
+                    str(record["Difficulty"]),
+                ],
             )
             deck.add_note(note)
-        
+
         # Create a temporary directory for the package
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / "anki_deck.apkg"
             package = genanki.Package(deck)
             package.write_to_file(output_path)
-            
+
             # Copy to a more permanent location
             final_path = "anki_deck.apkg"
-            with open(output_path, 'rb') as src, open(final_path, 'wb') as dst:
+            with open(output_path, "rb") as src, open(final_path, "wb") as dst:
                 dst.write(src.read())
-        
+
         gr.Info("✅ Anki deck export complete!")
         return gr.File(value=final_path, visible=True)
-    
+
     except Exception as e:
         logger.error(f"Failed to export Anki deck: {str(e)}", exc_info=True)
         raise gr.Error(f"Failed to export Anki deck: {str(e)}")
@@ -951,21 +948,22 @@ custom_theme = gr.themes.Soft().set(
     button_primary_text_color="white",
 )
 
+
 def analyze_learning_path(api_key, description, model):
     """Analyze a job description or learning goal to create a structured learning path"""
-    
+
     try:
         client = OpenAI(api_key=api_key)
     except Exception as e:
         logger.error(f"Failed to initialize OpenAI client: {str(e)}")
         raise gr.Error(f"Failed to initialize OpenAI client: {str(e)}")
-    
+
     system_prompt = """You are an expert curriculum designer and educational consultant.
     Your task is to analyze learning goals and create structured, achievable learning paths.
     Break down complex topics into manageable subjects, identify prerequisites,
     and suggest practical projects that reinforce learning.
     Focus on creating a logical progression that builds upon previous knowledge."""
-    
+
     path_prompt = f"""
     Analyze this description and create a structured learning path.
     Return your analysis as a JSON object with the following structure:
@@ -984,26 +982,33 @@ def analyze_learning_path(api_key, description, model):
     Description to analyze:
     {description}
     """
-    
+
     try:
         response = structured_output_completion(
-            client,
-            model,
-            {"type": "json_object"},
-            system_prompt,
-            path_prompt
+            client, model, {"type": "json_object"}, system_prompt, path_prompt
         )
-        
-        # Format the response for the UI
+
+        if (
+            not response
+            or "subjects" not in response
+            or "learning_order" not in response
+            or "projects" not in response
+        ):
+            logger.error("Invalid response format from API")
+            raise gr.Error("Failed to analyze learning path. Please try again.")
+
         subjects_df = pd.DataFrame(response["subjects"])
-        learning_order_text = f"### Recommended Learning Order\n{response['learning_order']}"
+        learning_order_text = (
+            f"### Recommended Learning Order\n{response['learning_order']}"
+        )
         projects_text = f"### Suggested Projects\n{response['projects']}"
-        
+
         return subjects_df, learning_order_text, projects_text
-        
+
     except Exception as e:
         logger.error(f"Failed to analyze learning path: {str(e)}")
         raise gr.Error(f"Failed to analyze learning path: {str(e)}")
+
 
 with gr.Blocks(
     theme=custom_theme,
@@ -1026,60 +1031,55 @@ with gr.Blocks(
         with gr.Row():
             with gr.Column(scale=1):
                 gr.Markdown("### Configuration")
-                
+
                 # Add mode selection
                 generation_mode = gr.Radio(
-                    choices=[
-                        "subject",
-                        "path"
-                    ],
+                    choices=["subject", "path"],
                     value="subject",
                     label="Generation Mode",
-                    info="Choose how you want to generate content"
+                    info="Choose how you want to generate content",
                 )
-                
+
                 # Create containers for different modes
                 with gr.Group() as subject_mode:
                     subject = gr.Textbox(
                         label="Subject",
                         placeholder="Enter the subject, e.g., 'Basic SQL Concepts'",
-                        info="The topic you want to generate flashcards for"
+                        info="The topic you want to generate flashcards for",
                     )
-                
+
                 with gr.Group(visible=False) as path_mode:
                     description = gr.Textbox(
                         label="Learning Goal",
                         placeholder="Paste a job description or describe what you want to learn...",
                         info="We'll break this down into learnable subjects",
-                        lines=5
+                        lines=5,
                     )
-                    analyze_button = gr.Button("Analyze & Break Down", variant="secondary")
-                
+                    analyze_button = gr.Button(
+                        "Analyze & Break Down", variant="secondary"
+                    )
+
                 # Common settings
                 api_key_input = gr.Textbox(
                     label="OpenAI API Key",
                     type="password",
                     placeholder="Enter your OpenAI API key",
                     value=os.getenv("OPENAI_API_KEY", ""),
-                    info="Your OpenAI API key starting with 'sk-'"
+                    info="Your OpenAI API key starting with 'sk-'",
                 )
-                
+
                 # Generation Button
                 generate_button = gr.Button("Generate Cards", variant="primary")
 
                 # Advanced Settings in Accordion
                 with gr.Accordion("Advanced Settings", open=False):
                     model_choice = gr.Dropdown(
-                        choices=[
-                            "gpt-4o-mini",
-                            "gpt-4o",
-                            "o1"
-                        ],
+                        choices=["gpt-4o-mini", "gpt-4o", "o1"],
                         value="gpt-4o-mini",
-                        label="Model Selection", 
-                        info="Select the AI model to use for generation"
+                        label="Model Selection",
+                        info="Select the AI model to use for generation",
                     )
-                    
+
                     # Add tooltip/description for models
                     model_info = gr.Markdown("""
                     **Model Information:**
@@ -1087,7 +1087,7 @@ with gr.Blocks(
                     - **gpt-4o**: Better quality, takes longer to generate
                     - **o1**: Highest quality, longest generation time
                     """)
-                    
+
                     topic_number = gr.Slider(
                         label="Number of Topics",
                         minimum=2,
@@ -1118,25 +1118,25 @@ with gr.Blocks(
                     subjects_list = gr.Dataframe(
                         headers=["Subject", "Prerequisites", "Time Estimate"],
                         label="Recommended Subjects",
-                        interactive=False
+                        interactive=False,
                     )
                     learning_order = gr.Markdown("### Recommended Learning Order")
                     projects = gr.Markdown("### Suggested Projects")
-                    
+
                     # Replace generate_selected with use_subjects
                     use_subjects = gr.Button(
                         "Use These Subjects ℹ️",  # Added info emoji to button text
-                        variant="primary"
+                        variant="primary",
                     )
                     gr.Markdown(
                         "*Click to copy subjects to main input for card generation*",
-                        elem_classes="hint-text"
+                        elem_classes="hint-text",
                     )
-                
+
                 # Existing output components
                 with gr.Group() as cards_output:
                     gr.Markdown("### Generated Cards")
-                    
+
                     # Output Format Documentation
                     with gr.Accordion("Output Format", open=True):
                         gr.Markdown("""
@@ -1162,7 +1162,7 @@ with gr.Blocks(
                         with gr.Accordion("Example Card Format", open=False):
                             gr.Code(
                                 label="Example Card",
-                                value='''
+                                value="""
 {
     "front": {
         "question": "What is a PRIMARY KEY constraint in SQL?"
@@ -1182,10 +1182,10 @@ with gr.Blocks(
         "difficulty": "beginner"
     }
 }
-                                ''',
-                                language="json"
+                                """,
+                                language="json",
                             )
-                    
+
                     # Dataframe Output
                     output = gr.Dataframe(
                         headers=[
@@ -1198,7 +1198,7 @@ with gr.Blocks(
                             "Prerequisites",
                             "Learning_Outcomes",
                             "Common_Misconceptions",
-                            "Difficulty"
+                            "Difficulty",
                         ],
                         interactive=True,
                         elem_classes="tall-dataframe",
@@ -1211,28 +1211,42 @@ with gr.Blocks(
                         with gr.Column():
                             gr.Markdown("### Export Options")
                             with gr.Row():
-                                export_csv_button = gr.Button("Export to CSV", variant="secondary")
-                                export_anki_button = gr.Button("Export to Anki Deck", variant="secondary")
-                            download_csv = gr.File(label="Download CSV", interactive=False, visible=False)
-                            download_anki = gr.File(label="Download Anki Deck", interactive=False, visible=False)
+                                export_csv_button = gr.Button(
+                                    "Export to CSV", variant="secondary"
+                                )
+                                export_anki_button = gr.Button(
+                                    "Export to Anki Deck", variant="secondary"
+                                )
+                            download_csv = gr.File(
+                                label="Download CSV", interactive=False, visible=False
+                            )
+                            download_anki = gr.File(
+                                label="Download Anki Deck",
+                                interactive=False,
+                                visible=False,
+                            )
 
         # Add near the top of the Blocks
         with gr.Row():
             progress = gr.HTML(visible=False)
-            total_cards = gr.Number(label="Total Cards Generated", value=0, visible=False)
+            total_cards = gr.Number(
+                label="Total Cards Generated", value=0, visible=False
+            )
 
         # Add JavaScript to handle mode switching
         def update_mode_visibility(mode):
             """Update component visibility based on selected mode and clear values"""
-            is_subject = (mode == "subject")
-            is_path = (mode == "path")
-            
+            is_subject = mode == "subject"
+            is_path = mode == "path"
+
             # Clear values when switching modes
             if is_path:
                 subject.value = ""  # Clear subject when switching to path mode
             else:
-                description.value = ""  # Clear description when switching to subject mode
-            
+                description.value = (
+                    ""  # Clear description when switching to subject mode
+                )
+
             return {
                 subject_mode: gr.update(visible=is_subject),
                 path_mode: gr.update(visible=is_path),
@@ -1242,7 +1256,7 @@ with gr.Blocks(
                 description: gr.update(value="") if not is_path else gr.update(),
                 output: gr.update(value=None),  # Clear previous output
                 progress: gr.update(value="", visible=False),
-                total_cards: gr.update(value=0, visible=False)
+                total_cards: gr.update(value=0, visible=False),
             }
 
         # Update the mode switching handler to include all components that need clearing
@@ -1258,42 +1272,44 @@ with gr.Blocks(
                 description,
                 output,
                 progress,
-                total_cards
-            ]
+                total_cards,
+            ],
         )
-        
+
         # Add handler for path analysis
         analyze_button.click(
             fn=analyze_learning_path,
             inputs=[api_key_input, description, model_choice],
-            outputs=[subjects_list, learning_order, projects]
+            outputs=[subjects_list, learning_order, projects],
         )
-        
+
         # Add this function to handle copying subjects to main input
         def use_selected_subjects(subjects_df, topic_number):
             """Copy selected subjects to main input and switch to subject mode"""
             if subjects_df is None or subjects_df.empty:
                 raise gr.Error("No subjects available to copy")
-            
+
             # Get all subjects and join them
             subjects = subjects_df["Subject"].tolist()
             combined_subject = ", ".join(subjects)
-            
+
             # Calculate reasonable number of topics based on number of subjects
-            suggested_topics = min(len(subjects) + 2, 20)  # Add 2 for related concepts, cap at 20
-            
+            suggested_topics = min(
+                len(subjects) + 2, 20
+            )  # Add 2 for related concepts, cap at 20
+
             # Return updates for individual components instead of groups
             return (
-                "subject",                # generation_mode value
+                "subject",  # generation_mode value
                 gr.update(visible=True),  # subject textbox visibility
-                gr.update(visible=False), # description textbox visibility
-                gr.update(visible=False), # subjects_list visibility
-                gr.update(visible=False), # learning_order visibility
-                gr.update(visible=False), # projects visibility
+                gr.update(visible=False),  # description textbox visibility
+                gr.update(visible=False),  # subjects_list visibility
+                gr.update(visible=False),  # learning_order visibility
+                gr.update(visible=False),  # projects visibility
                 gr.update(visible=True),  # output visibility
-                combined_subject,         # subject value
-                suggested_topics,         # topic_number value
-                "Focus on connections between these subjects and their practical applications"  # preference_prompt
+                combined_subject,  # subject value
+                suggested_topics,  # topic_number value
+                "Focus on connections between these subjects and their practical applications",  # preference_prompt
             )
 
         # Update the click handler to match the new outputs
@@ -1302,7 +1318,7 @@ with gr.Blocks(
             inputs=[subjects_list, topic_number],
             outputs=[
                 generation_mode,
-                subject,           # Individual components instead of groups
+                subject,  # Individual components instead of groups
                 description,
                 subjects_list,
                 learning_order,
@@ -1310,8 +1326,8 @@ with gr.Blocks(
                 output,
                 subject,
                 topic_number,
-                preference_prompt
-            ]
+                preference_prompt,
+            ],
         )
 
         # Simplified event handlers
@@ -1326,7 +1342,7 @@ with gr.Blocks(
                 preference_prompt,
             ],
             outputs=[output, progress, total_cards],
-            show_progress=True,
+            show_progress="full",
         )
 
         export_csv_button.click(
