@@ -50,6 +50,7 @@ class Card(BaseModel):
     front: CardFront
     back: CardBack
     metadata: Optional[dict] = None
+    card_type: str = "basic"  # Add card_type, default to basic
 
 
 class CardList(BaseModel):
@@ -193,19 +194,34 @@ def structured_output_completion(
         raise
 
 
-def generate_cards_batch(client, model, topic, num_cards, system_prompt, batch_size=3):
-    """Generate a batch of cards for a topic"""
+def generate_cards_batch(
+    client, model, topic, num_cards, system_prompt, generate_cloze=False, batch_size=3
+):
+    """Generate a batch of cards for a topic, potentially including cloze deletions"""
+
+    cloze_instruction = ""
+    if generate_cloze:
+        cloze_instruction = """
+        Where appropriate, generate Cloze deletion cards.
+        - For Cloze cards, set "card_type" to "cloze".
+        - Format the question field using Anki's cloze syntax (e.g., "The capital of France is {{c1::Paris}}.").
+        - The "answer" field should contain the full, non-cloze text or specific context for the cloze.
+        - For standard question/answer cards, set "card_type" to "basic".
+        """
+
     cards_prompt = f"""
     Generate {num_cards} flashcards for the topic: {topic}
+    {cloze_instruction}
     Return your response as a JSON object with the following structure:
     {{
         "cards": [
             {{
+                "card_type": "basic or cloze",
                 "front": {{
-                    "question": "question text"
+                    "question": "question text (potentially with {{c1::cloze syntax}})"
                 }},
                 "back": {{
-                    "answer": "concise answer",
+                    "answer": "concise answer or full text for cloze",
                     "explanation": "detailed explanation",
                     "example": "practical example"
                 }},
@@ -216,12 +232,15 @@ def generate_cards_batch(client, model, topic, num_cards, system_prompt, batch_s
                     "difficulty": "beginner/intermediate/advanced"
                 }}
             }}
+            // ... more cards
         ]
     }}
     """
 
     try:
-        logger.info(f"Generated learning sequence for {topic}")
+        logger.info(
+            f"Generating card batch for {topic}, Cloze enabled: {generate_cloze}"
+        )
         response = structured_output_completion(
             client, model, {"type": "json_object"}, system_prompt, cards_prompt
         )
@@ -233,7 +252,27 @@ def generate_cards_batch(client, model, topic, num_cards, system_prompt, batch_s
         # Convert the JSON response into Card objects
         cards = []
         for card_data in response["cards"]:
+            # Ensure required fields are present before creating Card object
+            if "front" not in card_data or "back" not in card_data:
+                logger.warning(
+                    f"Skipping card due to missing front/back data: {card_data}"
+                )
+                continue
+            if "question" not in card_data["front"]:
+                logger.warning(f"Skipping card due to missing question: {card_data}")
+                continue
+            if (
+                "answer" not in card_data["back"]
+                or "explanation" not in card_data["back"]
+                or "example" not in card_data["back"]
+            ):
+                logger.warning(
+                    f"Skipping card due to missing answer/explanation/example: {card_data}"
+                )
+                continue
+
             card = Card(
+                card_type=card_data.get("card_type", "basic"),
                 front=CardFront(**card_data["front"]),
                 back=CardBack(**card_data["back"]),
                 metadata=card_data.get("metadata", {}),
@@ -243,7 +282,9 @@ def generate_cards_batch(client, model, topic, num_cards, system_prompt, batch_s
         return cards
 
     except Exception as e:
-        logger.error(f"Failed to generate cards batch: {str(e)}")
+        logger.error(
+            f"Failed to generate cards batch for {topic}: {str(e)}", exc_info=True
+        )
         raise
 
 
@@ -287,10 +328,11 @@ def generate_cards(
     topic_number=1,
     cards_per_topic=2,
     preference_prompt="assume I'm a beginner",
+    generate_cloze=False,
 ):
     logger.info(f"Starting card generation for subject: {subject}")
     logger.debug(
-        f"Parameters: topics={topic_number}, cards_per_topic={cards_per_topic}"
+        f"Parameters: topics={topic_number}, cards_per_topic={cards_per_topic}, cloze={generate_cloze}"
     )
 
     # Input validation
@@ -377,6 +419,7 @@ def generate_cards(
                     topic["name"],
                     cards_per_topic,
                     system_prompt,
+                    generate_cloze=generate_cloze,
                     batch_size=3,
                 )
 
@@ -388,6 +431,7 @@ def generate_cards(
                         row = [
                             index,
                             topic["name"],
+                            card.card_type,
                             card.front.question,
                             card.back.answer,
                             card.back.explanation,
@@ -422,6 +466,7 @@ def generate_cards(
             columns=[
                 "Index",
                 "Topic",
+                "Card_Type",
                 "Question",
                 "Answer",
                 "Explanation",
@@ -711,6 +756,59 @@ BASIC_MODEL = genanki.Model(
 )
 
 
+# Define the Cloze Model (based on Anki's default Cloze type)
+CLOZE_MODEL = genanki.Model(
+    random.randrange(1 << 30, 1 << 31),  # Needs a unique ID
+    "AnkiGen Cloze Enhanced",
+    model_type=genanki.Model.CLOZE,  # Specify model type as CLOZE
+    fields=[
+        {"name": "Text"},  # Field for the text containing the cloze deletion
+        {"name": "Extra"},  # Field for additional info shown on the back
+        {"name": "Difficulty"},  # Keep metadata
+        {"name": "SourceTopic"},  # Add topic info
+    ],
+    templates=[
+        {
+            "name": "Cloze Card",
+            "qfmt": "{{cloze:Text}}",
+            "afmt": """
+                {{cloze:Text}}
+                <hr>
+                <div class="extra-info">{{Extra}}</div>
+                <div class="metadata-footer">Difficulty: {{Difficulty}} | Topic: {{SourceTopic}}</div>
+            """,
+        }
+    ],
+    css="""
+        .card {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            font-size: 16px; line-height: 1.6; color: #1a1a1a;
+            max-width: 800px; margin: 0 auto; padding: 20px;
+            background: #ffffff;
+        }
+        .cloze {
+            font-weight: bold; color: #2563eb;
+        }
+        .extra-info {
+            margin-top: 1em; padding-top: 1em;
+            border-top: 1px solid #e5e7eb;
+            font-size: 0.95em; color: #333;
+            background: #f8fafc; padding: 1em; border-radius: 6px;
+        }
+        .extra-info h3 { margin-top: 0.5em; font-size: 1.1em; color: #1e293b; }
+        .extra-info pre code {
+            display: block; padding: 1em; background: #1e293b;
+            color: #e2e8f0; border-radius: 6px; overflow-x: auto;
+            font-family: 'Fira Code', 'Consolas', monospace; font-size: 0.9em;
+            margin-top: 0.5em;
+        }
+        .metadata-footer {
+            margin-top: 1.5em; font-size: 0.85em; color: #64748b; text-align: right;
+        }
+    """,
+)
+
+
 # Split the export functions
 def export_csv(data):
     """Export the generated cards as a CSV file"""
@@ -748,153 +846,53 @@ def export_deck(data, subject):
 
         records = data.to_dict("records")
 
-        # Update the model to include metadata fields
-        global BASIC_MODEL
-        BASIC_MODEL = genanki.Model(
-            random.randrange(1 << 30, 1 << 31),
-            "AnkiGen Enhanced",
-            fields=[
-                {"name": "Question"},
-                {"name": "Answer"},
-                {"name": "Explanation"},
-                {"name": "Example"},
-                {"name": "Prerequisites"},
-                {"name": "Learning_Outcomes"},
-                {"name": "Common_Misconceptions"},
-                {"name": "Difficulty"},
-            ],
-            templates=[
-                {
-                    "name": "Card 1",
-                    "qfmt": """
-                    <div class="card question">
-                        <div class="content">{{Question}}</div>
-                        <div class="prerequisites">Prerequisites: {{Prerequisites}}</div>
-                    </div>
-                """,
-                    "afmt": """
-                    <div class="card answer">
-                        <div class="question">{{Question}}</div>
-                        <hr>
-                        <div class="content">
-                            <div class="answer-section">
-                                <h3>Answer:</h3>
-                                <div>{{Answer}}</div>
-                            </div>
-                            
-                            <div class="explanation-section">
-                                <h3>Explanation:</h3>
-                                <div>{{Explanation}}</div>
-                            </div>
-                            
-                            <div class="example-section">
-                                <h3>Example:</h3>
-                                <pre><code>{{Example}}</code></pre>
-                            </div>
-                            
-                            <div class="metadata-section">
-                                <h3>Prerequisites:</h3>
-                                <div>{{Prerequisites}}</div>
-                                
-                                <h3>Learning Outcomes:</h3>
-                                <div>{{Learning_Outcomes}}</div>
-                                
-                                <h3>Watch out for:</h3>
-                                <div>{{Common_Misconceptions}}</div>
-                                
-                                <h3>Difficulty Level:</h3>
-                                <div>{{Difficulty}}</div>
-                            </div>
-                        </div>
-                    </div>
-                """,
-                }
-            ],
-            css="""
-                .card {
-                    font-family: 'Inter', system-ui, -apple-system, sans-serif;
-                    font-size: 16px;
-                    line-height: 1.6;
-                    color: #1a1a1a;
-                    max-width: 800px;
-                    margin: 0 auto;
-                    padding: 20px;
-                    background: #ffffff;
-                }
-                
-                .question {
-                    font-size: 1.3em;
-                    font-weight: 600;
-                    color: #2563eb;
-                    margin-bottom: 1.5em;
-                }
-                
-                .prerequisites {
-                    font-size: 0.9em;
-                    color: #666;
-                    margin-top: 1em;
-                    font-style: italic;
-                }
-                
-                .answer-section,
-                .explanation-section,
-                .example-section {
-                    margin: 1.5em 0;
-                    padding: 1.2em;
-                    border-radius: 8px;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                }
-                
-                .answer-section {
-                    background: #f0f9ff;
-                    border-left: 4px solid #2563eb;
-                }
-                
-                .explanation-section {
-                    background: #f0fdf4;
-                    border-left: 4px solid #4ade80;
-                }
-                
-                .example-section {
-                    background: #fff7ed;
-                    border-left: 4px solid #f97316;
-                }
-                
-                .metadata-section {
-                    background: #f8f9fa;
-                    padding: 1em;
-                    border-radius: 6px;
-                    margin: 1em 0;
-                }
-                
-                pre code {
-                    display: block;
-                    padding: 1em;
-                    background: #1e293b;
-                    color: #e2e8f0;
-                    border-radius: 6px;
-                    overflow-x: auto;
-                    font-family: 'Fira Code', 'Consolas', monospace;
-                    font-size: 0.9em;
-                }
-            """,
-        )
+        # Ensure both models are added to the deck package
+        deck.add_model(BASIC_MODEL)
+        deck.add_model(CLOZE_MODEL)
 
         # Add notes to the deck
         for record in records:
-            note = genanki.Note(
-                model=BASIC_MODEL,
-                fields=[
-                    str(record["Question"]),
-                    str(record["Answer"]),
-                    str(record["Explanation"]),
-                    str(record["Example"]),
-                    str(record["Prerequisites"]),
-                    str(record["Learning_Outcomes"]),
-                    str(record["Common_Misconceptions"]),
-                    str(record["Difficulty"]),
-                ],
-            )
+            card_type = record.get("Card_Type", "basic").lower()
+
+            if card_type == "cloze":
+                # Create Cloze note
+                extra_content = f"""
+                    <h3>Explanation:</h3>
+                    <div>{record["Explanation"]}</div>
+                    <h3>Example:</h3>
+                    <pre><code>{record["Example"]}</code></pre>
+                    <h3>Prerequisites:</h3>
+                    <div>{record["Prerequisites"]}</div>
+                    <h3>Learning Outcomes:</h3>
+                    <div>{record["Learning_Outcomes"]}</div>
+                    <h3>Watch out for:</h3>
+                    <div>{record["Common_Misconceptions"]}</div>
+                """
+                note = genanki.Note(
+                    model=CLOZE_MODEL,
+                    fields=[
+                        str(record["Question"]),  # Contains {{c1::...}}
+                        extra_content,  # All other info goes here
+                        str(record["Difficulty"]),
+                        str(record["Topic"]),
+                    ],
+                )
+            else:  # Default to basic card
+                # Create Basic note (existing logic)
+                note = genanki.Note(
+                    model=BASIC_MODEL,
+                    fields=[
+                        str(record["Question"]),
+                        str(record["Answer"]),
+                        str(record["Explanation"]),
+                        str(record["Example"]),
+                        str(record["Prerequisites"]),
+                        str(record["Learning_Outcomes"]),
+                        str(record["Common_Misconceptions"]),
+                        str(record["Difficulty"]),
+                    ],
+                )
+
             deck.add_note(note)
 
         # Create a temporary directory for the package
@@ -1110,6 +1108,11 @@ with gr.Blocks(
                         info="Customize how the content is presented",
                         lines=3,
                     )
+                    generate_cloze_checkbox = gr.Checkbox(
+                        label="Generate Cloze Cards (Experimental)",
+                        value=False,
+                        info="Allow the AI to generate fill-in-the-blank style cards where appropriate.",
+                    )
 
             # Right column - add a new container for learning path results
             with gr.Column(scale=2):
@@ -1144,6 +1147,7 @@ with gr.Blocks(
                         
                         * **Index**: Unique identifier for each card
                         * **Topic**: The specific subtopic within your subject
+                        * **Card_Type**: Type of card (basic or cloze)
                         * **Question**: Clear, focused question for the flashcard front
                         * **Answer**: Concise core answer
                         * **Explanation**: Detailed conceptual explanation
@@ -1191,6 +1195,7 @@ with gr.Blocks(
                         headers=[
                             "Index",
                             "Topic",
+                            "Card_Type",
                             "Question",
                             "Answer",
                             "Explanation",
@@ -1203,7 +1208,19 @@ with gr.Blocks(
                         interactive=True,
                         elem_classes="tall-dataframe",
                         wrap=True,
-                        column_widths=[50, 100, 200, 200, 250, 200, 150, 150, 150, 100],
+                        column_widths=[
+                            50,
+                            100,
+                            80,
+                            200,
+                            200,
+                            250,
+                            200,
+                            150,
+                            150,
+                            150,
+                            100,
+                        ],
                     )
 
                     # Export Controls
@@ -1336,10 +1353,11 @@ with gr.Blocks(
             inputs=[
                 api_key_input,
                 subject,
-                model_choice,  # Add model selection
+                model_choice,
                 topic_number,
                 cards_per_topic,
                 preference_prompt,
+                generate_cloze_checkbox,
             ],
             outputs=[output, progress, total_cards],
             show_progress="full",
