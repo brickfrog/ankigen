@@ -16,6 +16,7 @@ dependencies = [
     "gradio>=4.44.1",
     "tenacity>=9.1.2",
     "genanki>=0.13.1",
+    "pydantic==2.10.6",
 ]
 
 [project.optional-dependencies]
