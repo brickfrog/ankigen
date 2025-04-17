@@ -291,19 +291,14 @@ def generate_cards_batch(
 # Add near the top with other constants
 AVAILABLE_MODELS = [
     {
-        "value": "gpt-4o-mini",  # Default model
-        "label": "gpt-4o Mini (Fastest)",
+        "value": "gpt-4.1-mini",  # Default model
+        "label": "gpt-4.1 Mini (Fastest)",
         "description": "Balanced speed and quality",
     },
     {
-        "value": "gpt-4o",
-        "label": "gpt-4o (Better Quality)",
+        "value": "gpt-4.1",
+        "label": "gpt-4.1 (Better Quality)",
         "description": "Higher quality, slower generation",
-    },
-    {
-        "value": "o1",
-        "label": "o1 (Best Quality)",
-        "description": "Highest quality, longest generation time",
     },
 ]
 
@@ -324,7 +319,7 @@ GENERATION_MODES = [
 def generate_cards(
     api_key_input,
     subject,
-    model_name="gpt-4o-mini",
+    model_name="gpt-4.1-mini",
     topic_number=1,
     cards_per_topic=2,
     preference_prompt="assume I'm a beginner",
@@ -1008,17 +1003,68 @@ def analyze_learning_path(api_key, description, model):
         raise gr.Error(f"Failed to analyze learning path: {str(e)}")
 
 
+# --- Example Data for Initialization ---
+example_data = pd.DataFrame(
+    [
+        [
+            "1.1",
+            "SQL Basics",
+            "basic",
+            "What is a SELECT statement used for?",
+            "Retrieving data from one or more database tables.",
+            "The SELECT statement is the most common command in SQL. It allows you to specify which columns and rows you want to retrieve from a table based on certain conditions.",
+            "```sql\\nSELECT column1, column2 FROM my_table WHERE condition;\\n```",
+            ["Understanding of database tables"],
+            ["Retrieve specific data", "Filter results"],
+            ["❌ SELECT * is always efficient (Reality: Can be slow for large tables)"],
+            "beginner",
+        ],
+        [
+            "2.1",
+            "Python Fundamentals",
+            "cloze",
+            "The primary keyword to define a function in Python is {{c1::def}}.",
+            "def",
+            "Functions are defined using the `def` keyword, followed by the function name, parentheses for arguments, and a colon. The indented block below defines the function body.",
+            # Use a raw triple-quoted string for the code block to avoid escaping issues
+            r"""```python
+def greet(name):
+    print(f"Hello, {name}!")
+```""",
+            ["Basic programming concepts"],
+            ["Define reusable blocks of code"],
+            ["❌ Forgetting the colon (:) after the definition"],
+            "beginner",
+        ],
+    ],
+    columns=[
+        "Index",
+        "Topic",
+        "Card_Type",
+        "Question",
+        "Answer",
+        "Explanation",
+        "Example",
+        "Prerequisites",
+        "Learning_Outcomes",
+        "Common_Misconceptions",
+        "Difficulty",
+    ],
+)
+# -------------------------------------
+
 with gr.Blocks(
     theme=custom_theme,
     title="AnkiGen",
     css="""
         #footer {display:none !important}
-        .tall-dataframe {height: 800px !important}
-        .contain {max-width: 1200px; margin: auto;}
+        .tall-dataframe {min-height: 500px !important}
+        .contain {max-width: 95% !important; margin: auto;}
         .output-cards {border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);}
         .hint-text {font-size: 0.9em; color: #666; margin-top: 4px;}
+        .export-group > .gradio-group { margin-bottom: 0 !important; padding-bottom: 5px !important; }
     """,
-    js=js_storage,  # Add the JavaScript
+    js=js_storage,
 ) as ankigen:
     with gr.Column(elem_classes="contain"):
         gr.Markdown("# 📚 AnkiGen - Advanced Anki Card Generator")
@@ -1072,8 +1118,8 @@ with gr.Blocks(
                 # Advanced Settings in Accordion
                 with gr.Accordion("Advanced Settings", open=False):
                     model_choice = gr.Dropdown(
-                        choices=["gpt-4o-mini", "gpt-4o", "o1"],
-                        value="gpt-4o-mini",
+                        choices=["gpt-4.1-mini", "gpt-4.1"],
+                        value="gpt-4.1-mini",
                         label="Model Selection",
                         info="Select the AI model to use for generation",
                     )
@@ -1081,9 +1127,8 @@ with gr.Blocks(
                     # Add tooltip/description for models
                     model_info = gr.Markdown("""
                     **Model Information:**
-                    - **gpt-4o-mini**: Fastest option, good for most use cases
-                    - **gpt-4o**: Better quality, takes longer to generate
-                    - **o1**: Highest quality, longest generation time
+                    - **gpt-4.1-mini**: Fastest option, good for most use cases
+                    - **gpt-4.1**: Better quality, takes longer to generate
                     """)
 
                     topic_number = gr.Slider(
@@ -1141,7 +1186,7 @@ with gr.Blocks(
                     gr.Markdown("### Generated Cards")
 
                     # Output Format Documentation
-                    with gr.Accordion("Output Format", open=True):
+                    with gr.Accordion("Output Format", open=False):
                         gr.Markdown("""
                         The generated cards include:
                         
@@ -1192,6 +1237,7 @@ with gr.Blocks(
 
                     # Dataframe Output
                     output = gr.Dataframe(
+                        value=example_data,
                         headers=[
                             "Index",
                             "Topic",
@@ -1224,16 +1270,17 @@ with gr.Blocks(
                     )
 
                     # Export Controls
-                    with gr.Row():
-                        with gr.Column():
-                            gr.Markdown("### Export Options")
-                            with gr.Row():
-                                export_csv_button = gr.Button(
-                                    "Export to CSV", variant="secondary"
-                                )
-                                export_anki_button = gr.Button(
-                                    "Export to Anki Deck", variant="secondary"
-                                )
+                    with gr.Group(elem_classes="export-group"):
+                        gr.Markdown("#### Export Generated Cards")
+                        with gr.Row():
+                            export_csv_button = gr.Button(
+                                "Export to CSV", variant="secondary"
+                            )
+                            export_anki_button = gr.Button(
+                                "Export to Anki Deck (.apkg)", variant="secondary"
+                            )
+                        # Re-wrap File components in an invisible Row
+                        with gr.Row(visible=False):
                             download_csv = gr.File(
                                 label="Download CSV", interactive=False, visible=False
                             )
@@ -1301,49 +1348,57 @@ with gr.Blocks(
         )
 
         # Add this function to handle copying subjects to main input
-        def use_selected_subjects(subjects_df, topic_number):
+        def use_selected_subjects(subjects_df):
             """Copy selected subjects to main input and switch to subject mode"""
             if subjects_df is None or subjects_df.empty:
-                raise gr.Error("No subjects available to copy")
+                gr.Warning("No subjects available to copy from Learning Path analysis.")
+                # Return updates for all relevant output components to avoid errors
+                return (
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                )
 
-            # Get all subjects and join them
             subjects = subjects_df["Subject"].tolist()
             combined_subject = ", ".join(subjects)
-
-            # Calculate reasonable number of topics based on number of subjects
             suggested_topics = min(
-                len(subjects) + 2, 20
-            )  # Add 2 for related concepts, cap at 20
+                len(subjects) + 1, 20
+            )  # Suggest topics = num subjects + 1
 
-            # Return updates for individual components instead of groups
+            # Return updates for relevant components
             return (
-                "subject",  # generation_mode value
-                gr.update(visible=True),  # subject textbox visibility
-                gr.update(visible=False),  # description textbox visibility
-                gr.update(visible=False),  # subjects_list visibility
-                gr.update(visible=False),  # learning_order visibility
-                gr.update(visible=False),  # projects visibility
-                gr.update(visible=True),  # output visibility
-                combined_subject,  # subject value
-                suggested_topics,  # topic_number value
-                "Focus on connections between these subjects and their practical applications",  # preference_prompt
+                "subject",  # Set mode to subject
+                gr.update(visible=True),  # Show subject_mode group
+                gr.update(visible=False),  # Hide path_mode group
+                gr.update(visible=False),  # Hide path_results group
+                gr.update(visible=True),  # Show cards_output group
+                combined_subject,  # Update subject textbox value
+                suggested_topics,  # Update topic_number slider value
+                # Update preference prompt
+                "Focus on connections between these subjects and their practical applications.",
+                example_data,  # Reset output to example data - THIS NOW WORKS
             )
 
-        # Update the click handler to match the new outputs
+        # Correct the outputs for the use_subjects click handler
         use_subjects.click(
             fn=use_selected_subjects,
-            inputs=[subjects_list, topic_number],
-            outputs=[
+            inputs=[subjects_list],  # Only needs the dataframe
+            outputs=[  # Match the return tuple of the function
                 generation_mode,
-                subject,  # Individual components instead of groups
-                description,
-                subjects_list,
-                learning_order,
-                projects,
-                output,
-                subject,
-                topic_number,
-                preference_prompt,
+                subject_mode,  # Group visibility
+                path_mode,  # Group visibility
+                path_results,  # Group visibility
+                cards_output,  # Group visibility
+                subject,  # Component value
+                topic_number,  # Component value
+                preference_prompt,  # Component value
+                output,  # Component value
             ],
         )
 
