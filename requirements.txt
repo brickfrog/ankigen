@@ -15,7 +15,7 @@ fsspec==2025.3.2
 genanki==0.13.1
 gradio==5.23.0
 gradio-client
-h11==0.16.0
+h11==0.14.0
 httpcore==1.0.8
 httpx==0.28.1
 huggingface-hub==0.30.2
