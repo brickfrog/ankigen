@@ -13,7 +13,7 @@ filelock==3.18.0
 frozendict==2.4.6
 fsspec==2025.3.2
 genanki==0.13.1
-gradio==5.3.0
+gradio==5.23.0
 gradio-client
 h11==0.16.0
 httpcore==1.0.8
