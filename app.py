@@ -319,30 +319,28 @@ GENERATION_MODES = [
 def generate_cards(
     api_key_input,
     subject,
+    generation_mode,
+    source_text,
     model_name="gpt-4.1-nano",
     topic_number=1,
     cards_per_topic=2,
     preference_prompt="assume I'm a beginner",
     generate_cloze=False,
 ):
-    logger.info(f"Starting card generation for subject: {subject}")
+    logger.info(f"Starting card generation in {generation_mode} mode")
     logger.debug(
-        f"Parameters: topics={topic_number}, cards_per_topic={cards_per_topic}, cloze={generate_cloze}"
+        f"Parameters: mode={generation_mode}, topics={topic_number}, cards_per_topic={cards_per_topic}, cloze={generate_cloze}"
     )
 
-    # Input validation
+    # --- Common Setup ---
     if not api_key_input:
         logger.warning("No API key provided")
         raise gr.Error("OpenAI API key is required")
     if not api_key_input.startswith("sk-"):
         logger.warning("Invalid API key format")
         raise gr.Error("Invalid API key format. OpenAI keys should start with 'sk-'")
-    if not subject.strip():
-        logger.warning("No subject provided")
-        raise gr.Error("Subject is required")
 
-    gr.Info("🚀 Starting card generation...")
-
+    # Moved client initialization up
     try:
         logger.debug("Initializing OpenAI client")
         client = OpenAI(api_key=api_key_input)
@@ -353,101 +351,245 @@ def generate_cards(
     model = model_name
     flattened_data = []
     total = 0
-
     progress_tracker = gr.Progress(track_tqdm=True)
-
-    system_prompt = f"""
-    You are an expert educator in {subject}, creating an optimized learning sequence.
-    Your goal is to:
-    1. Break down the subject into logical concepts
-    2. Identify prerequisites and learning outcomes
-    3. Generate cards that build upon each other
-    4. Address and correct common misconceptions
-    5. Include verification steps to minimize hallucinations
-    6. Provide a recommended study order
-
-    For explanations and examples:
-    - Keep explanations in plain text
-    - Format code examples with triple backticks (```)
-    - Separate conceptual examples from code examples
-    - Use clear, concise language
-
-    Keep in mind the user's preferences: {preference_prompt}
-    """
-
-    topic_prompt = f"""
-    Generate the top {topic_number} important subjects to know about {subject} in 
-    order of ascending difficulty. Return your response as a JSON object with the following structure:
-    {{
-        "topics": [
-            {{
-                "name": "topic name",
-                "difficulty": "beginner/intermediate/advanced",
-                "description": "brief description"
-            }}
-        ]
-    }}
-    """
+    # ---------------------
 
     try:
-        logger.info("Generating topics...")
-        topics_response = structured_output_completion(
-            client, model, {"type": "json_object"}, system_prompt, topic_prompt
-        )
+        # --- Text Mode ---
+        if generation_mode == "text":
+            logger.info("Generating cards directly from provided text.")
+            if not source_text or not source_text.strip():
+                logger.warning("No source text provided for text generation mode.")
+                raise gr.Error("Source text is required for 'From Text' mode.")
 
-        if not topics_response or "topics" not in topics_response:
-            logger.error("Invalid topics response format")
-            raise gr.Error("Failed to generate topics. Please try again.")
+            gr.Info("🚀 Starting card generation from text...")
 
-        topics = topics_response["topics"]
+            text_system_prompt = f"""
+            You are an expert educator specializing in extracting key information and creating flashcards from provided text.
+            Your goal is to generate clear, concise, and accurate flashcards based *only* on the text given by the user.
+            Focus on the most important concepts, definitions, facts, or processes mentioned.
+            Generate {cards_per_topic} cards.
+            Adhere to the user's learning preferences: {preference_prompt}
+            Use the specified JSON output format.
+            For explanations and examples:
+            - Keep explanations in plain text
+            - Format code examples with triple backticks (```)
+            - Separate conceptual examples from code examples
+            - Use clear, concise language
+            """
 
-        gr.Info(f"✨ Generated {len(topics)} topics successfully!")
+            # Shared JSON structure prompt part (from generate_cards_batch)
+            json_structure_prompt = """
+            Return your response as a JSON object with the following structure:
+            {
+                "cards": [
+                    {
+                        "card_type": "basic or cloze",
+                        "front": {
+                            "question": "question text (potentially with {{c1::cloze syntax}})" 
+                        },
+                        "back": {
+                            "answer": "concise answer or full text for cloze",
+                            "explanation": "detailed explanation",
+                            "example": "practical example"
+                        },
+                        "metadata": {
+                            "prerequisites": ["list", "of", "prerequisites"],
+                            "learning_outcomes": ["list", "of", "outcomes"],
+                            "misconceptions": ["list", "of", "misconceptions"],
+                            "difficulty": "beginner/intermediate/advanced"
+                        }
+                    }
+                    // ... more cards
+                ]
+            }
+            """
 
-        # Generate cards for each topic
-        for i, topic in enumerate(
-            progress_tracker.tqdm(topics, desc="Generating cards")
-        ):
-            try:
-                cards = generate_cards_batch(
-                    client,
-                    model,
-                    topic["name"],
-                    cards_per_topic,
-                    system_prompt,
-                    generate_cloze=generate_cloze,
-                    batch_size=3,
+            cloze_instruction = ""
+            if generate_cloze:
+                cloze_instruction = """
+                Where appropriate, generate Cloze deletion cards.
+                - For Cloze cards, set "card_type" to "cloze".
+                - Format the question field using Anki's cloze syntax (e.g., "The capital of France is {{{{c1::Paris}}}}.").
+                - The "answer" field should contain the full, non-cloze text or specific context for the cloze.
+                - For standard question/answer cards, set "card_type" to "basic".
+                """
+
+            text_user_prompt = f"""
+            Generate {cards_per_topic} flashcards based *only* on the following text:
+            --- TEXT START ---
+            {source_text}
+            --- TEXT END ---
+            {cloze_instruction}
+            {json_structure_prompt}
+            """
+
+            response = structured_output_completion(
+                client,
+                model,
+                {"type": "json_object"},
+                text_system_prompt,
+                text_user_prompt,
+            )
+
+            if not response or "cards" not in response:
+                logger.error("Invalid cards response format from text generation.")
+                raise gr.Error("Failed to generate cards from text. Please try again.")
+
+            # Process the cards (similar to generate_cards_batch processing)
+            cards_data = response["cards"]
+            for card_index, card_data in enumerate(cards_data, start=1):
+                if "front" not in card_data or "back" not in card_data:
+                    logger.warning(
+                        f"Skipping card due to missing front/back data: {card_data}"
+                    )
+                    continue
+                if "question" not in card_data["front"]:
+                    logger.warning(
+                        f"Skipping card due to missing question: {card_data}"
+                    )
+                    continue
+                if (
+                    "answer" not in card_data["back"]
+                    or "explanation" not in card_data["back"]
+                    or "example" not in card_data["back"]
+                ):
+                    logger.warning(
+                        f"Skipping card due to missing answer/explanation/example: {card_data}"
+                    )
+                    continue
+
+                card = Card(
+                    card_type=card_data.get("card_type", "basic"),
+                    front=CardFront(**card_data["front"]),
+                    back=CardBack(**card_data["back"]),
+                    metadata=card_data.get("metadata", {}),
                 )
+                metadata = card.metadata or {}
+                row = [
+                    f"1.{card_index}",  # Simple indexing for text mode
+                    "From Text",  # Use a generic topic
+                    card.card_type,
+                    card.front.question,
+                    card.back.answer,
+                    card.back.explanation,
+                    card.back.example,
+                    metadata.get("prerequisites", []),
+                    metadata.get("learning_outcomes", []),
+                    metadata.get("misconceptions", []),
+                    metadata.get("difficulty", "beginner"),
+                ]
+                flattened_data.append(row)
+                total += 1
 
-                if cards:
-                    for card_index, card in enumerate(cards, start=1):
-                        index = f"{i + 1}.{card_index}"
-                        metadata = card.metadata or {}
+            gr.Info(f"✅ Generated {total} cards from the provided text.")
 
-                        row = [
-                            index,
-                            topic["name"],
-                            card.card_type,
-                            card.front.question,
-                            card.back.answer,
-                            card.back.explanation,
-                            card.back.example,
-                            metadata.get("prerequisites", []),
-                            metadata.get("learning_outcomes", []),
-                            metadata.get("misconceptions", []),
-                            metadata.get("difficulty", "beginner"),
-                        ]
-                        flattened_data.append(row)
-                        total += 1
+        # --- Subject Mode --- (Existing logic)
+        elif generation_mode == "subject":
+            logger.info(f"Generating cards for subject: {subject}")
+            if not subject or not subject.strip():
+                logger.warning("No subject provided for subject generation mode.")
+                raise gr.Error("Subject is required for 'Single Subject' mode.")
 
-                    gr.Info(f"✅ Generated {len(cards)} cards for {topic['name']}")
+            gr.Info("🚀 Starting card generation for subject...")
 
-            except Exception as e:
-                logger.error(
-                    f"Failed to generate cards for topic {topic['name']}: {str(e)}"
-                )
-                gr.Warning(f"Failed to generate cards for '{topic['name']}'")
-                continue
+            # Note: system_prompt uses subject variable
+            system_prompt = f"""
+            You are an expert educator in {subject}, creating an optimized learning sequence.
+            Your goal is to:
+            1. Break down the subject into logical concepts
+            2. Identify prerequisites and learning outcomes
+            3. Generate cards that build upon each other
+            4. Address and correct common misconceptions
+            5. Include verification steps to minimize hallucinations
+            6. Provide a recommended study order
 
+            For explanations and examples:
+            - Keep explanations in plain text
+            - Format code examples with triple backticks (```)
+            - Separate conceptual examples from code examples
+            - Use clear, concise language
+
+            Keep in mind the user's preferences: {preference_prompt}
+            """
+
+            topic_prompt = f"""
+            Generate the top {topic_number} important subjects to know about {subject} in 
+            order of ascending difficulty. Return your response as a JSON object with the following structure:
+            {{
+                "topics": [
+                    {{
+                        "name": "topic name",
+                        "difficulty": "beginner/intermediate/advanced",
+                        "description": "brief description"
+                    }}
+                ]
+            }}
+            """
+
+            logger.info("Generating topics...")
+            topics_response = structured_output_completion(
+                client, model, {"type": "json_object"}, system_prompt, topic_prompt
+            )
+
+            if not topics_response or "topics" not in topics_response:
+                logger.error("Invalid topics response format")
+                raise gr.Error("Failed to generate topics. Please try again.")
+
+            topics = topics_response["topics"]
+            gr.Info(f"✨ Generated {len(topics)} topics successfully!")
+
+            # Generate cards for each topic
+            for i, topic in enumerate(
+                progress_tracker.tqdm(topics, desc="Generating cards")
+            ):
+                try:
+                    # Re-use the system_prompt defined above for topic generation
+                    cards = generate_cards_batch(
+                        client,
+                        model,
+                        topic["name"],
+                        cards_per_topic,
+                        system_prompt,  # Use the same system prompt
+                        generate_cloze=generate_cloze,
+                        batch_size=3,
+                    )
+
+                    if cards:
+                        for card_index, card in enumerate(cards, start=1):
+                            index = f"{i + 1}.{card_index}"
+                            metadata = card.metadata or {}
+
+                            row = [
+                                index,
+                                topic["name"],
+                                card.card_type,
+                                card.front.question,
+                                card.back.answer,
+                                card.back.explanation,
+                                card.back.example,
+                                metadata.get("prerequisites", []),
+                                metadata.get("learning_outcomes", []),
+                                metadata.get("misconceptions", []),
+                                metadata.get("difficulty", "beginner"),
+                            ]
+                            flattened_data.append(row)
+                            total += 1
+
+                        gr.Info(f"✅ Generated {len(cards)} cards for {topic['name']}")
+
+                except Exception as e:
+                    logger.error(
+                        f"Failed to generate cards for topic {topic['name']}: {str(e)}"
+                    )
+                    gr.Warning(f"Failed to generate cards for '{topic['name']}'")
+                    continue
+        else:
+            # Handle other modes or invalid mode if necessary
+            logger.error(f"Invalid generation mode: {generation_mode}")
+            raise gr.Error(f"Unsupported generation mode: {generation_mode}")
+
+        # --- Common Completion Logic ---
         final_html = f"""
         <div style="text-align: center">
             <p>✅ Generation complete!</p>
@@ -455,7 +597,6 @@ def generate_cards(
         </div>
         """
 
-        # Convert to DataFrame with all columns
         df = pd.DataFrame(
             flattened_data,
             columns=[
@@ -472,12 +613,15 @@ def generate_cards(
                 "Difficulty",
             ],
         )
-
         return df, final_html, total
 
     except Exception as e:
         logger.error(f"Card generation failed: {str(e)}", exc_info=True)
-        raise gr.Error(f"Card generation failed: {str(e)}")
+        # Check if e is already a gr.Error
+        if isinstance(e, gr.Error):
+            raise e
+        else:
+            raise gr.Error(f"Card generation failed: {str(e)}")
 
 
 # Update the BASIC_MODEL definition with enhanced CSS/HTML
@@ -1080,7 +1224,11 @@ with gr.Blocks(
                 with gr.Column(scale=1):
                     # Add mode selection
                     generation_mode = gr.Radio(
-                        choices=["subject", "path"],
+                        choices=[
+                            ("Single Subject", "subject"),
+                            ("Learning Path", "path"),
+                            ("From Text", "text"),
+                        ],
                         value="subject",
                         label="Generation Mode",
                         info="Choose how you want to generate content",
@@ -1103,6 +1251,15 @@ with gr.Blocks(
                         )
                         analyze_button = gr.Button(
                             "Analyze & Break Down", variant="secondary"
+                        )
+
+                    # Add group for text input mode
+                    with gr.Group(visible=False) as text_mode:
+                        source_text = gr.Textbox(
+                            label="Source Text",
+                            placeholder="Paste the text you want to generate cards from here...",
+                            info="The AI will extract key information from this text to create cards.",
+                            lines=15,
                         )
 
                     # Common settings moved inside the accordion, in column 1
@@ -1300,26 +1457,27 @@ with gr.Blocks(
         def update_mode_visibility(mode):
             is_subject = mode == "subject"
             is_path = mode == "path"
+            is_text = mode == "text"
 
             # Clear values when switching modes
             subject_val = subject.value if is_subject else ""
             description_val = description.value if is_path else ""
-            output_val = (
-                output.value
-            )  # Keep output if switching between modes? Or clear? Let's clear.
+            text_val = source_text.value if is_text else ""
+            # Clear outputs regardless of mode switch
 
             return {
                 # Toggle visibility of groups within the Configuration Accordion
                 subject_mode: gr.update(visible=is_subject),
                 path_mode: gr.update(visible=is_path),
+                text_mode: gr.update(visible=is_text),
                 # Toggle visibility of output groups below the Generate button
                 path_results: gr.update(visible=is_path),
-                cards_output: gr.update(
-                    visible=is_subject
-                ),  # Show cards output in subject mode
+                # Show cards output in subject OR text mode
+                cards_output: gr.update(visible=is_subject or is_text),
                 # Update/Clear component values
                 subject: gr.update(value=subject_val),
                 description: gr.update(value=description_val),
+                source_text: gr.update(value=text_val),
                 output: gr.update(value=None),  # Clear previous card/subject output
                 subjects_list: gr.update(value=None),  # Clear previous path analysis
                 learning_order: gr.update(value=""),
@@ -1335,10 +1493,12 @@ with gr.Blocks(
             outputs=[
                 subject_mode,
                 path_mode,
+                text_mode,
                 path_results,
                 cards_output,
                 subject,
                 description,
+                source_text,
                 output,
                 subjects_list,
                 learning_order,
@@ -1401,7 +1561,8 @@ with gr.Blocks(
             }
 
         # Correct the outputs for the use_subjects click handler
-        # The outputs list MUST match the keys in the dictionary returned by the function
+        # This handler now needs to return a dictionary to update components via gr.update
+        # The outputs list should match the keys in the dictionary returned by use_selected_subjects
         use_subjects.click(
             fn=use_selected_subjects,
             inputs=[subjects_list],
@@ -1409,10 +1570,12 @@ with gr.Blocks(
                 generation_mode,
                 subject_mode,
                 path_mode,
+                text_mode,
                 path_results,
                 cards_output,
                 subject,
                 description,
+                source_text,
                 topic_number,
                 preference_prompt,
                 output,
@@ -1424,12 +1587,14 @@ with gr.Blocks(
             ],
         )
 
-        # Generate button handler remains the same
+        # Generate button handler remains the same FOR NOW (will modify next)
         generate_button.click(
             fn=generate_cards,
             inputs=[
                 api_key_input,
                 subject,
+                generation_mode,
+                source_text,
                 model_choice,
                 topic_number,
                 cards_per_topic,
