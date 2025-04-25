@@ -20,6 +20,8 @@ import json
 import tempfile
 from pathlib import Path
 import pandas as pd
+import requests
+from bs4 import BeautifulSoup
 
 
 class Step(BaseModel):
@@ -194,6 +196,76 @@ def structured_output_completion(
         raise
 
 
+def fetch_webpage_text(url: str) -> str:
+    """Fetches and extracts main text content from a URL."""
+    try:
+        logger.info(f"Fetching content from URL: {url}")
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+        response = requests.get(url, headers=headers, timeout=15)  # Added timeout
+        response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+
+        logger.debug(f"Parsing HTML content for {url}")
+        # Use lxml for speed if available, fallback to html.parser
+        try:
+            soup = BeautifulSoup(response.text, "lxml")
+        except ImportError:
+            logger.warning("lxml not found, using html.parser instead.")
+            soup = BeautifulSoup(response.text, "html.parser")
+
+        # Remove script and style elements
+        for script_or_style in soup(["script", "style"]):
+            script_or_style.extract()
+
+        # Attempt to find main content tags
+        main_content = soup.find("main")
+        if not main_content:
+            main_content = soup.find("article")
+
+        # If specific tags found, use their text, otherwise fallback to body
+        if main_content:
+            text = main_content.get_text()
+            logger.debug(f"Extracted text from <{main_content.name}> tag.")
+        else:
+            body = soup.find("body")
+            if body:
+                text = body.get_text()
+                logger.debug("Extracted text from <body> tag (fallback).")
+            else:
+                text = ""  # No body tag found?
+                logger.warning(f"Could not find <body> tag in {url}")
+
+        # Break into lines and remove leading/trailing space on each
+        lines = (line.strip() for line in text.splitlines())
+        # Break multi-headlines into a line each
+        chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+        # Drop blank lines
+        text = "\n".join(chunk for chunk in chunks if chunk)
+
+        if not text:
+            logger.warning(f"Could not extract meaningful text from {url}")
+            raise ValueError("Could not extract text content from the URL.")
+
+        logger.info(
+            f"Successfully extracted text from {url} (Length: {len(text)} chars)"
+        )
+        return text
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Network error fetching URL {url}: {e}")
+        raise ConnectionError(f"Could not fetch URL: {e}")
+    except Exception as e:
+        logger.error(f"Error processing URL {url}: {e}", exc_info=True)
+        # Re-raise specific internal errors or a general one
+        if isinstance(e, (ValueError, ConnectionError)):
+            raise e
+        else:
+            raise RuntimeError(
+                f"An unexpected error occurred while processing the URL: {e}"
+            )
+
+
 def generate_cards_batch(
     client, model, topic, num_cards, system_prompt, generate_cloze=False, batch_size=3
 ):
@@ -321,6 +393,7 @@ def generate_cards(
     subject,
     generation_mode,
     source_text,
+    url_input,
     model_name="gpt-4.1-nano",
     topic_number=1,
     cards_per_topic=2,
@@ -355,15 +428,44 @@ def generate_cards(
     # ---------------------
 
     try:
-        # --- Text Mode ---
-        if generation_mode == "text":
-            logger.info("Generating cards directly from provided text.")
+        page_text_for_generation = ""  # Initialize variable to hold text for AI
+
+        # --- Web Mode --- (Fetch text first)
+        if generation_mode == "web":
+            logger.info("Generation mode: Web")
+            if not url_input or not url_input.strip():
+                logger.warning("No URL provided for web generation mode.")
+                raise gr.Error("URL is required for 'From Web' mode.")
+
+            gr.Info(f"🕸️ Fetching content from {url_input}...")
+            try:
+                page_text_for_generation = fetch_webpage_text(url_input)
+                gr.Info(
+                    f"✅ Successfully fetched text (approx. {len(page_text_for_generation)} chars). Starting AI generation..."
+                )
+            except (ConnectionError, ValueError, RuntimeError) as e:
+                logger.error(f"Failed to fetch or process URL {url_input}: {e}")
+                raise gr.Error(
+                    f"Failed to get content from URL: {e}"
+                )  # Display fetch error to user
+            except Exception as e:  # Catch any other unexpected errors during fetch
+                logger.error(
+                    f"Unexpected error fetching URL {url_input}: {e}", exc_info=True
+                )
+                raise gr.Error(f"An unexpected error occurred fetching the URL.")
+
+        # --- Text Mode --- (Use provided text)
+        elif generation_mode == "text":
+            logger.info("Generation mode: Text Input")
             if not source_text or not source_text.strip():
                 logger.warning("No source text provided for text generation mode.")
                 raise gr.Error("Source text is required for 'From Text' mode.")
-
+            page_text_for_generation = source_text  # Use the input text directly
             gr.Info("🚀 Starting card generation from text...")
 
+        # --- Generation from Text/Web Content ---
+        if generation_mode == "text" or generation_mode == "web":
+            # Shared logic for generating cards from fetched/provided text
             text_system_prompt = f"""
             You are an expert educator specializing in extracting key information and creating flashcards from provided text.
             Your goal is to generate clear, concise, and accurate flashcards based *only* on the text given by the user.
@@ -377,8 +479,6 @@ def generate_cards(
             - Separate conceptual examples from code examples
             - Use clear, concise language
             """
-
-            # Shared JSON structure prompt part (from generate_cards_batch)
             json_structure_prompt = """
             Return your response as a JSON object with the following structure:
             {
@@ -404,7 +504,6 @@ def generate_cards(
                 ]
             }
             """
-
             cloze_instruction = ""
             if generate_cloze:
                 cloze_instruction = """
@@ -414,16 +513,14 @@ def generate_cards(
                 - The "answer" field should contain the full, non-cloze text or specific context for the cloze.
                 - For standard question/answer cards, set "card_type" to "basic".
                 """
-
             text_user_prompt = f"""
             Generate {cards_per_topic} flashcards based *only* on the following text:
             --- TEXT START ---
-            {source_text}
+            {page_text_for_generation} 
             --- TEXT END ---
             {cloze_instruction}
             {json_structure_prompt}
             """
-
             response = structured_output_completion(
                 client,
                 model,
@@ -431,13 +528,13 @@ def generate_cards(
                 text_system_prompt,
                 text_user_prompt,
             )
-
             if not response or "cards" not in response:
                 logger.error("Invalid cards response format from text generation.")
                 raise gr.Error("Failed to generate cards from text. Please try again.")
 
             # Process the cards (similar to generate_cards_batch processing)
             cards_data = response["cards"]
+            topic_name = "From Web" if generation_mode == "web" else "From Text"
             for card_index, card_data in enumerate(cards_data, start=1):
                 if "front" not in card_data or "back" not in card_data:
                     logger.warning(
@@ -467,8 +564,8 @@ def generate_cards(
                 )
                 metadata = card.metadata or {}
                 row = [
-                    f"1.{card_index}",  # Simple indexing for text mode
-                    "From Text",  # Use a generic topic
+                    f"1.{card_index}",
+                    topic_name,  # Use dynamic topic name
                     card.card_type,
                     card.front.question,
                     card.back.answer,
@@ -481,8 +578,7 @@ def generate_cards(
                 ]
                 flattened_data.append(row)
                 total += 1
-
-            gr.Info(f"✅ Generated {total} cards from the provided text.")
+            gr.Info(f"✅ Generated {total} cards from the provided content.")
 
         # --- Subject Mode --- (Existing logic)
         elif generation_mode == "subject":
@@ -1228,6 +1324,7 @@ with gr.Blocks(
                             ("Single Subject", "subject"),
                             ("Learning Path", "path"),
                             ("From Text", "text"),
+                            ("From Web", "web"),
                         ],
                         value="subject",
                         label="Generation Mode",
@@ -1260,6 +1357,14 @@ with gr.Blocks(
                             placeholder="Paste the text you want to generate cards from here...",
                             info="The AI will extract key information from this text to create cards.",
                             lines=15,
+                        )
+
+                    # Add group for web input mode
+                    with gr.Group(visible=False) as web_mode:
+                        url_input = gr.Textbox(
+                            label="Web Page URL",
+                            placeholder="Paste the URL of the page you want to generate cards from...",
+                            info="The AI will attempt to extract content from this URL.",
                         )
 
                     # Common settings moved inside the accordion, in column 1
@@ -1458,35 +1563,32 @@ with gr.Blocks(
             is_subject = mode == "subject"
             is_path = mode == "path"
             is_text = mode == "text"
+            is_web = mode == "web"
 
-            # Clear values when switching modes
             subject_val = subject.value if is_subject else ""
             description_val = description.value if is_path else ""
             text_val = source_text.value if is_text else ""
-            # Clear outputs regardless of mode switch
+            url_val = url_input.value if is_web else ""
 
             return {
-                # Toggle visibility of groups within the Configuration Accordion
                 subject_mode: gr.update(visible=is_subject),
                 path_mode: gr.update(visible=is_path),
                 text_mode: gr.update(visible=is_text),
-                # Toggle visibility of output groups below the Generate button
+                web_mode: gr.update(visible=is_web),
                 path_results: gr.update(visible=is_path),
-                # Show cards output in subject OR text mode
-                cards_output: gr.update(visible=is_subject or is_text),
-                # Update/Clear component values
+                cards_output: gr.update(visible=is_subject or is_text or is_web),
                 subject: gr.update(value=subject_val),
                 description: gr.update(value=description_val),
                 source_text: gr.update(value=text_val),
-                output: gr.update(value=None),  # Clear previous card/subject output
-                subjects_list: gr.update(value=None),  # Clear previous path analysis
+                url_input: gr.update(value=url_val),
+                output: gr.update(value=None),
+                subjects_list: gr.update(value=None),
                 learning_order: gr.update(value=""),
                 projects: gr.update(value=""),
                 progress: gr.update(value="", visible=False),
                 total_cards: gr.update(value=0, visible=False),
             }
 
-        # Update the mode switching handler outputs
         generation_mode.change(
             fn=update_mode_visibility,
             inputs=[generation_mode],
@@ -1494,11 +1596,13 @@ with gr.Blocks(
                 subject_mode,
                 path_mode,
                 text_mode,
+                web_mode,
                 path_results,
                 cards_output,
                 subject,
                 description,
                 source_text,
+                url_input,
                 output,
                 subjects_list,
                 learning_order,
@@ -1508,31 +1612,31 @@ with gr.Blocks(
             ],
         )
 
-        # Path analysis handler remains the same
         analyze_button.click(
             fn=analyze_learning_path,
             inputs=[api_key_input, description, model_choice],
             outputs=[subjects_list, learning_order, projects],
         )
 
-        # Update the use_selected_subjects function to reflect new layout
         def use_selected_subjects(subjects_df):
             if subjects_df is None or subjects_df.empty:
                 gr.Warning("No subjects available to copy from Learning Path analysis.")
-                # Need to return updates for all outputs of the change handler
                 return (
                     gr.update(),
                     gr.update(),
                     gr.update(),
-                    gr.update(),  # mode groups, output groups
                     gr.update(),
                     gr.update(),
-                    gr.update(),  # subject, desc, output df
                     gr.update(),
                     gr.update(),
-                    gr.update(),  # path results components
                     gr.update(),
-                    gr.update(),  # progress, total cards
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
+                    gr.update(),
                 )
 
             subjects = subjects_df["Subject"].tolist()
@@ -1540,29 +1644,27 @@ with gr.Blocks(
             suggested_topics = min(len(subjects) + 1, 20)
 
             return {
-                # Set mode to subject
                 generation_mode: "subject",
-                # Update visibility
                 subject_mode: gr.update(visible=True),
                 path_mode: gr.update(visible=False),
+                text_mode: gr.update(visible=False),
+                web_mode: gr.update(visible=False),
                 path_results: gr.update(visible=False),
                 cards_output: gr.update(visible=True),
-                # Update values
                 subject: combined_subject,
-                description: "",  # Clear description
+                description: "",
+                source_text: "",
+                url_input: "",
                 topic_number: suggested_topics,
                 preference_prompt: "Focus on connections between these subjects and their practical applications.",
-                output: example_data,  # Reset card output
-                subjects_list: subjects_df,  # Keep path results briefly? Or clear? Let's keep for now.
+                output: example_data,
+                subjects_list: subjects_df,
                 learning_order: gr.update(),
                 projects: gr.update(),
                 progress: gr.update(visible=False),
                 total_cards: gr.update(visible=False),
             }
 
-        # Correct the outputs for the use_subjects click handler
-        # This handler now needs to return a dictionary to update components via gr.update
-        # The outputs list should match the keys in the dictionary returned by use_selected_subjects
         use_subjects.click(
             fn=use_selected_subjects,
             inputs=[subjects_list],
@@ -1571,11 +1673,13 @@ with gr.Blocks(
                 subject_mode,
                 path_mode,
                 text_mode,
+                web_mode,
                 path_results,
                 cards_output,
                 subject,
                 description,
                 source_text,
+                url_input,
                 topic_number,
                 preference_prompt,
                 output,
@@ -1587,7 +1691,6 @@ with gr.Blocks(
             ],
         )
 
-        # Generate button handler remains the same FOR NOW (will modify next)
         generate_button.click(
             fn=generate_cards,
             inputs=[
@@ -1595,6 +1698,7 @@ with gr.Blocks(
                 subject,
                 generation_mode,
                 source_text,
+                url_input,
                 model_choice,
                 topic_number,
                 cards_per_topic,
@@ -1605,7 +1709,6 @@ with gr.Blocks(
             show_progress="full",
         )
 
-        # Export handlers remain the same
         export_csv_button.click(
             fn=export_csv,
             inputs=[output],
