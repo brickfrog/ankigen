@@ -319,7 +319,7 @@ GENERATION_MODES = [
 def generate_cards(
     api_key_input,
     subject,
-    model_name="gpt-4.1-mini",
+    model_name="gpt-4.1-nano",
     topic_number=1,
     cards_per_topic=2,
     preference_prompt="assume I'm a beginner",
@@ -1280,14 +1280,13 @@ with gr.Blocks(
                                 "Export to Anki Deck (.apkg)", variant="secondary"
                             )
                         # Re-wrap File components in an invisible Row
-                        with gr.Row(visible=False):
+                        with gr.Row():
                             download_csv = gr.File(
-                                label="Download CSV", interactive=False, visible=False
+                                label="Download CSV", interactive=False
                             )
                             download_anki = gr.File(
                                 label="Download Anki Deck",
                                 interactive=False,
-                                visible=False,
                             )
 
         # Add near the top of the Blocks
