@@ -291,14 +291,14 @@ def generate_cards_batch(
 # Add near the top with other constants
 AVAILABLE_MODELS = [
     {
-        "value": "gpt-4.1-mini",  # Default model
-        "label": "gpt-4.1 Mini (Fastest)",
-        "description": "Balanced speed and quality",
+        "value": "gpt-4.1",  # Corrected model name
+        "label": "gpt-4.1 (Best Quality)",  # Corrected label
+        "description": "Highest quality, slower generation",  # Corrected description
     },
     {
-        "value": "gpt-4.1",
-        "label": "gpt-4.1 (Better Quality)",
-        "description": "Higher quality, slower generation",
+        "value": "gpt-4.1-nano",
+        "label": "gpt-4.1 Nano (Fast & Efficient)",
+        "description": "Optimized for speed and lower cost",
     },
 ]
 
@@ -1118,8 +1118,8 @@ with gr.Blocks(
                 # Advanced Settings in Accordion
                 with gr.Accordion("Advanced Settings", open=False):
                     model_choice = gr.Dropdown(
-                        choices=["gpt-4.1-mini", "gpt-4.1"],
-                        value="gpt-4.1-mini",
+                        choices=["gpt-4.1", "gpt-4.1-nano"],  # Corrected choices
+                        value="gpt-4.1-nano",  # Changed default to nano as it's faster/cheaper
                         label="Model Selection",
                         info="Select the AI model to use for generation",
                     )
@@ -1127,9 +1127,9 @@ with gr.Blocks(
                     # Add tooltip/description for models
                     model_info = gr.Markdown("""
                     **Model Information:**
-                    - **gpt-4.1-mini**: Fastest option, good for most use cases
-                    - **gpt-4.1**: Better quality, takes longer to generate
-                    """)
+                    - **gpt-4.1**: Highest quality, slower generation
+                    - **gpt-4.1-nano**: Optimized for speed and lower cost
+                    """)  # Corrected descriptions
 
                     topic_number = gr.Slider(
                         label="Number of Topics",
