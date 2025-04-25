@@ -1059,7 +1059,7 @@ with gr.Blocks(
     css="""
         #footer {display:none !important}
         .tall-dataframe {min-height: 500px !important}
-        .contain {max-width: 95% !important; margin: auto;}
+        .contain {max-width: 100% !important; margin: auto;}
         .output-cards {border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);}
         .hint-text {font-size: 0.9em; color: #666; margin-top: 4px;}
         .export-group > .gradio-group { margin-bottom: 0 !important; padding-bottom: 5px !important; }
@@ -1072,146 +1072,153 @@ with gr.Blocks(
         #### Generate comprehensive Anki flashcards using AI. 
         """)
 
-        with gr.Row():
-            with gr.Column(scale=1):
-                gr.Markdown("### Configuration")
-
-                # Add mode selection
-                generation_mode = gr.Radio(
-                    choices=["subject", "path"],
-                    value="subject",
-                    label="Generation Mode",
-                    info="Choose how you want to generate content",
-                )
-
-                # Create containers for different modes
-                with gr.Group() as subject_mode:
-                    subject = gr.Textbox(
-                        label="Subject",
-                        placeholder="Enter the subject, e.g., 'Basic SQL Concepts'",
-                        info="The topic you want to generate flashcards for",
+        # Configuration Section in an Accordion
+        with gr.Accordion("Configuration Settings", open=True):
+            # Create a row to hold two columns for settings
+            with gr.Row():
+                # Column 1: Basic settings
+                with gr.Column(scale=1):
+                    # Add mode selection
+                    generation_mode = gr.Radio(
+                        choices=["subject", "path"],
+                        value="subject",
+                        label="Generation Mode",
+                        info="Choose how you want to generate content",
                     )
 
-                with gr.Group(visible=False) as path_mode:
-                    description = gr.Textbox(
-                        label="Learning Goal",
-                        placeholder="Paste a job description or describe what you want to learn...",
-                        info="We'll break this down into learnable subjects",
-                        lines=5,
-                    )
-                    analyze_button = gr.Button(
-                        "Analyze & Break Down", variant="secondary"
-                    )
+                    # Create containers for different modes
+                    with gr.Group() as subject_mode:
+                        subject = gr.Textbox(
+                            label="Subject",
+                            placeholder="Enter the subject, e.g., 'Basic SQL Concepts'",
+                            info="The topic you want to generate flashcards for",
+                        )
 
-                # Common settings
-                api_key_input = gr.Textbox(
-                    label="OpenAI API Key",
-                    type="password",
-                    placeholder="Enter your OpenAI API key",
-                    value=os.getenv("OPENAI_API_KEY", ""),
-                    info="Your OpenAI API key starting with 'sk-'",
-                )
+                    with gr.Group(visible=False) as path_mode:
+                        description = gr.Textbox(
+                            label="Learning Goal",
+                            placeholder="Paste a job description or describe what you want to learn...",
+                            info="We'll break this down into learnable subjects",
+                            lines=5,
+                        )
+                        analyze_button = gr.Button(
+                            "Analyze & Break Down", variant="secondary"
+                        )
 
-                # Generation Button
-                generate_button = gr.Button("Generate Cards", variant="primary")
-
-                # Advanced Settings in Accordion
-                with gr.Accordion("Advanced Settings", open=False):
-                    model_choice = gr.Dropdown(
-                        choices=["gpt-4.1", "gpt-4.1-nano"],  # Corrected choices
-                        value="gpt-4.1-nano",  # Changed default to nano as it's faster/cheaper
-                        label="Model Selection",
-                        info="Select the AI model to use for generation",
+                    # Common settings moved inside the accordion, in column 1
+                    api_key_input = gr.Textbox(
+                        label="OpenAI API Key",
+                        type="password",
+                        placeholder="Enter your OpenAI API key",
+                        value=os.getenv("OPENAI_API_KEY", ""),
+                        info="Your OpenAI API key starting with 'sk-'",
                     )
 
-                    # Add tooltip/description for models
-                    model_info = gr.Markdown("""
-                    **Model Information:**
-                    - **gpt-4.1**: Highest quality, slower generation
-                    - **gpt-4.1-nano**: Optimized for speed and lower cost
-                    """)  # Corrected descriptions
+                # Column 2: Advanced settings accordion
+                with gr.Column(scale=1):
+                    # Advanced Settings Accordion moved inside the main accordion, in column 2
+                    with gr.Accordion("Advanced Settings", open=False):
+                        model_choice = gr.Dropdown(
+                            choices=["gpt-4.1", "gpt-4.1-nano"],  # Corrected choices
+                            value="gpt-4.1-nano",  # Changed default to nano as it's faster/cheaper
+                            label="Model Selection",
+                            info="Select the AI model to use for generation",
+                        )
 
-                    topic_number = gr.Slider(
-                        label="Number of Topics",
-                        minimum=2,
-                        maximum=20,
-                        step=1,
-                        value=2,
-                        info="How many distinct topics to cover within the subject",
-                    )
-                    cards_per_topic = gr.Slider(
-                        label="Cards per Topic",
-                        minimum=2,
-                        maximum=30,
-                        step=1,
-                        value=3,
-                        info="How many flashcards to generate for each topic",
-                    )
-                    preference_prompt = gr.Textbox(
-                        label="Learning Preferences",
-                        placeholder="e.g., 'Assume I'm a beginner' or 'Focus on practical examples'",
-                        info="Customize how the content is presented",
-                        lines=3,
-                    )
-                    generate_cloze_checkbox = gr.Checkbox(
-                        label="Generate Cloze Cards (Experimental)",
-                        value=False,
-                        info="Allow the AI to generate fill-in-the-blank style cards where appropriate.",
-                    )
+                        # Add tooltip/description for models
+                        model_info = gr.Markdown(
+                            """
+                        **Model Information:**
+                        - **gpt-4.1**: Highest quality, slower generation
+                        - **gpt-4.1-nano**: Optimized for speed and lower cost
+                        """  # Corrected descriptions
+                        )
 
-            # Right column - add a new container for learning path results
-            with gr.Column(scale=2):
-                with gr.Group(visible=False) as path_results:
-                    gr.Markdown("### Learning Path Analysis")
-                    subjects_list = gr.Dataframe(
-                        headers=["Subject", "Prerequisites", "Time Estimate"],
-                        label="Recommended Subjects",
-                        interactive=False,
-                    )
-                    learning_order = gr.Markdown("### Recommended Learning Order")
-                    projects = gr.Markdown("### Suggested Projects")
+                        topic_number = gr.Slider(
+                            label="Number of Topics",
+                            minimum=2,
+                            maximum=20,
+                            step=1,
+                            value=2,
+                            info="How many distinct topics to cover within the subject",
+                        )
+                        cards_per_topic = gr.Slider(
+                            label="Cards per Topic",
+                            minimum=2,
+                            maximum=30,
+                            step=1,
+                            value=3,
+                            info="How many flashcards to generate for each topic",
+                        )
+                        preference_prompt = gr.Textbox(
+                            label="Learning Preferences",
+                            placeholder="e.g., 'Assume I'm a beginner' or 'Focus on practical examples'",
+                            info="Customize how the content is presented",
+                            lines=3,
+                        )
+                        generate_cloze_checkbox = gr.Checkbox(
+                            label="Generate Cloze Cards (Experimental)",
+                            value=False,
+                            info="Allow the AI to generate fill-in-the-blank style cards where appropriate.",
+                        )
+                    # End of Advanced Settings Accordion
+            # End of Row containing settings columns
+        # End of Configuration Settings Accordion
 
-                    # Replace generate_selected with use_subjects
-                    use_subjects = gr.Button(
-                        "Use These Subjects ℹ️",  # Added info emoji to button text
-                        variant="primary",
-                    )
-                    gr.Markdown(
-                        "*Click to copy subjects to main input for card generation*",
-                        elem_classes="hint-text",
-                    )
+        # Generation Button moved outside the Accordion
+        generate_button = gr.Button("Generate Cards", variant="primary")
 
-                # Existing output components
-                with gr.Group() as cards_output:
-                    gr.Markdown("### Generated Cards")
+        # Output Area remains below the button
+        with gr.Group(
+            visible=False
+        ) as path_results:  # Initial visibility controlled by mode
+            gr.Markdown("### Learning Path Analysis")
+            subjects_list = gr.Dataframe(
+                headers=["Subject", "Prerequisites", "Time Estimate"],
+                label="Recommended Subjects",
+                interactive=False,
+            )
+            learning_order = gr.Markdown("### Recommended Learning Order")
+            projects = gr.Markdown("### Suggested Projects")
 
-                    # Output Format Documentation
-                    with gr.Accordion("Output Format", open=False):
-                        gr.Markdown("""
-                        The generated cards include:
-                        
-                        * **Index**: Unique identifier for each card
-                        * **Topic**: The specific subtopic within your subject
-                        * **Card_Type**: Type of card (basic or cloze)
-                        * **Question**: Clear, focused question for the flashcard front
-                        * **Answer**: Concise core answer
-                        * **Explanation**: Detailed conceptual explanation
-                        * **Example**: Practical implementation or code example
-                        * **Prerequisites**: Required knowledge for this concept
-                        * **Learning Outcomes**: What you should understand after mastering this card
-                        * **Common Misconceptions**: Incorrect assumptions debunked with explanations
-                        * **Difficulty**: Concept complexity level for optimal study sequencing
-                        
-                        Export options:
-                        - **CSV**: Raw data for custom processing
-                        - **Anki Deck**: Ready-to-use deck with formatted cards and metadata
-                        """)
+            use_subjects = gr.Button(
+                "Use These Subjects ℹ️",
+                variant="primary",
+            )
+            gr.Markdown(
+                "*Click to copy subjects to main input for card generation*",
+                elem_classes="hint-text",
+            )
 
-                        # Add near the output format documentation
-                        with gr.Accordion("Example Card Format", open=False):
-                            gr.Code(
-                                label="Example Card",
-                                value="""
+        with gr.Group() as cards_output:  # Initial visibility controlled by mode
+            gr.Markdown("### Generated Cards")
+
+            # Output Format Documentation (can stay here)
+            with gr.Accordion("Output Format", open=False):
+                gr.Markdown("""
+                The generated cards include:
+                
+                * **Index**: Unique identifier for each card
+                * **Topic**: The specific subtopic within your subject
+                * **Card_Type**: Type of card (basic or cloze)
+                * **Question**: Clear, focused question for the flashcard front
+                * **Answer**: Concise core answer
+                * **Explanation**: Detailed conceptual explanation
+                * **Example**: Practical implementation or code example
+                * **Prerequisites**: Required knowledge for this concept
+                * **Learning Outcomes**: What you should understand after mastering this card
+                * **Common Misconceptions**: Incorrect assumptions debunked with explanations
+                * **Difficulty**: Concept complexity level for optimal study sequencing
+                
+                Export options:
+                - **CSV**: Raw data for custom processing
+                - **Anki Deck**: Ready-to-use deck with formatted cards and metadata
+                """)
+
+                with gr.Accordion("Example Card Format", open=False):
+                    gr.Code(
+                        label="Example Card",
+                        value="""
 {
     "front": {
         "question": "What is a PRIMARY KEY constraint in SQL?"
@@ -1231,63 +1238,56 @@ with gr.Blocks(
         "difficulty": "beginner"
     }
 }
-                                """,
-                                language="json",
-                            )
-
-                    # Dataframe Output
-                    output = gr.Dataframe(
-                        value=example_data,
-                        headers=[
-                            "Index",
-                            "Topic",
-                            "Card_Type",
-                            "Question",
-                            "Answer",
-                            "Explanation",
-                            "Example",
-                            "Prerequisites",
-                            "Learning_Outcomes",
-                            "Common_Misconceptions",
-                            "Difficulty",
-                        ],
-                        interactive=True,
-                        elem_classes="tall-dataframe",
-                        wrap=True,
-                        column_widths=[
-                            50,
-                            100,
-                            80,
-                            200,
-                            200,
-                            250,
-                            200,
-                            150,
-                            150,
-                            150,
-                            100,
-                        ],
+                        """,
+                        language="json",
                     )
 
-                    # Export Controls
-                    with gr.Group(elem_classes="export-group"):
-                        gr.Markdown("#### Export Generated Cards")
-                        with gr.Row():
-                            export_csv_button = gr.Button(
-                                "Export to CSV", variant="secondary"
-                            )
-                            export_anki_button = gr.Button(
-                                "Export to Anki Deck (.apkg)", variant="secondary"
-                            )
-                        # Re-wrap File components in an invisible Row
-                        with gr.Row():
-                            download_csv = gr.File(
-                                label="Download CSV", interactive=False
-                            )
-                            download_anki = gr.File(
-                                label="Download Anki Deck",
-                                interactive=False,
-                            )
+            output = gr.Dataframe(
+                value=example_data,
+                headers=[
+                    "Index",
+                    "Topic",
+                    "Card_Type",
+                    "Question",
+                    "Answer",
+                    "Explanation",
+                    "Example",
+                    "Prerequisites",
+                    "Learning_Outcomes",
+                    "Common_Misconceptions",
+                    "Difficulty",
+                ],
+                interactive=True,
+                elem_classes="tall-dataframe",
+                wrap=True,
+                column_widths=[
+                    50,
+                    100,
+                    80,
+                    200,
+                    200,
+                    250,
+                    200,
+                    150,
+                    150,
+                    150,
+                    100,
+                ],
+            )
+
+            with gr.Group(elem_classes="export-group"):
+                gr.Markdown("#### Export Generated Cards")
+                with gr.Row():
+                    export_csv_button = gr.Button("Export to CSV", variant="secondary")
+                    export_anki_button = gr.Button(
+                        "Export to Anki Deck (.apkg)", variant="secondary"
+                    )
+                with gr.Row():  # Row containing File components is now visible
+                    download_csv = gr.File(label="Download CSV", interactive=False)
+                    download_anki = gr.File(
+                        label="Download Anki Deck",
+                        interactive=False,
+                    )
 
         # Add near the top of the Blocks
         with gr.Row():
@@ -1296,33 +1296,39 @@ with gr.Blocks(
                 label="Total Cards Generated", value=0, visible=False
             )
 
-        # Add JavaScript to handle mode switching
+        # Adjust JavaScript handler for mode switching
         def update_mode_visibility(mode):
-            """Update component visibility based on selected mode and clear values"""
             is_subject = mode == "subject"
             is_path = mode == "path"
 
             # Clear values when switching modes
-            if is_path:
-                subject.value = ""  # Clear subject when switching to path mode
-            else:
-                description.value = (
-                    ""  # Clear description when switching to subject mode
-                )
+            subject_val = subject.value if is_subject else ""
+            description_val = description.value if is_path else ""
+            output_val = (
+                output.value
+            )  # Keep output if switching between modes? Or clear? Let's clear.
 
             return {
+                # Toggle visibility of groups within the Configuration Accordion
                 subject_mode: gr.update(visible=is_subject),
                 path_mode: gr.update(visible=is_path),
+                # Toggle visibility of output groups below the Generate button
                 path_results: gr.update(visible=is_path),
-                cards_output: gr.update(visible=not is_path),
-                subject: gr.update(value="") if is_path else gr.update(),
-                description: gr.update(value="") if not is_path else gr.update(),
-                output: gr.update(value=None),  # Clear previous output
+                cards_output: gr.update(
+                    visible=is_subject
+                ),  # Show cards output in subject mode
+                # Update/Clear component values
+                subject: gr.update(value=subject_val),
+                description: gr.update(value=description_val),
+                output: gr.update(value=None),  # Clear previous card/subject output
+                subjects_list: gr.update(value=None),  # Clear previous path analysis
+                learning_order: gr.update(value=""),
+                projects: gr.update(value=""),
                 progress: gr.update(value="", visible=False),
                 total_cards: gr.update(value=0, visible=False),
             }
 
-        # Update the mode switching handler to include all components that need clearing
+        # Update the mode switching handler outputs
         generation_mode.change(
             fn=update_mode_visibility,
             inputs=[generation_mode],
@@ -1334,74 +1340,91 @@ with gr.Blocks(
                 subject,
                 description,
                 output,
+                subjects_list,
+                learning_order,
+                projects,
                 progress,
                 total_cards,
             ],
         )
 
-        # Add handler for path analysis
+        # Path analysis handler remains the same
         analyze_button.click(
             fn=analyze_learning_path,
             inputs=[api_key_input, description, model_choice],
             outputs=[subjects_list, learning_order, projects],
         )
 
-        # Add this function to handle copying subjects to main input
+        # Update the use_selected_subjects function to reflect new layout
         def use_selected_subjects(subjects_df):
-            """Copy selected subjects to main input and switch to subject mode"""
             if subjects_df is None or subjects_df.empty:
                 gr.Warning("No subjects available to copy from Learning Path analysis.")
-                # Return updates for all relevant output components to avoid errors
+                # Need to return updates for all outputs of the change handler
                 return (
                     gr.update(),
                     gr.update(),
                     gr.update(),
+                    gr.update(),  # mode groups, output groups
                     gr.update(),
                     gr.update(),
+                    gr.update(),  # subject, desc, output df
                     gr.update(),
                     gr.update(),
+                    gr.update(),  # path results components
                     gr.update(),
-                    gr.update(),
+                    gr.update(),  # progress, total cards
                 )
 
             subjects = subjects_df["Subject"].tolist()
             combined_subject = ", ".join(subjects)
-            suggested_topics = min(
-                len(subjects) + 1, 20
-            )  # Suggest topics = num subjects + 1
+            suggested_topics = min(len(subjects) + 1, 20)
 
-            # Return updates for relevant components
-            return (
-                "subject",  # Set mode to subject
-                gr.update(visible=True),  # Show subject_mode group
-                gr.update(visible=False),  # Hide path_mode group
-                gr.update(visible=False),  # Hide path_results group
-                gr.update(visible=True),  # Show cards_output group
-                combined_subject,  # Update subject textbox value
-                suggested_topics,  # Update topic_number slider value
-                # Update preference prompt
-                "Focus on connections between these subjects and their practical applications.",
-                example_data,  # Reset output to example data - THIS NOW WORKS
-            )
+            return {
+                # Set mode to subject
+                generation_mode: "subject",
+                # Update visibility
+                subject_mode: gr.update(visible=True),
+                path_mode: gr.update(visible=False),
+                path_results: gr.update(visible=False),
+                cards_output: gr.update(visible=True),
+                # Update values
+                subject: combined_subject,
+                description: "",  # Clear description
+                topic_number: suggested_topics,
+                preference_prompt: "Focus on connections between these subjects and their practical applications.",
+                output: example_data,  # Reset card output
+                subjects_list: subjects_df,  # Keep path results briefly? Or clear? Let's keep for now.
+                learning_order: gr.update(),
+                projects: gr.update(),
+                progress: gr.update(visible=False),
+                total_cards: gr.update(visible=False),
+            }
 
         # Correct the outputs for the use_subjects click handler
+        # The outputs list MUST match the keys in the dictionary returned by the function
         use_subjects.click(
             fn=use_selected_subjects,
-            inputs=[subjects_list],  # Only needs the dataframe
-            outputs=[  # Match the return tuple of the function
+            inputs=[subjects_list],
+            outputs=[
                 generation_mode,
-                subject_mode,  # Group visibility
-                path_mode,  # Group visibility
-                path_results,  # Group visibility
-                cards_output,  # Group visibility
-                subject,  # Component value
-                topic_number,  # Component value
-                preference_prompt,  # Component value
-                output,  # Component value
+                subject_mode,
+                path_mode,
+                path_results,
+                cards_output,
+                subject,
+                description,
+                topic_number,
+                preference_prompt,
+                output,
+                subjects_list,
+                learning_order,
+                projects,
+                progress,
+                total_cards,
             ],
         )
 
-        # Simplified event handlers
+        # Generate button handler remains the same
         generate_button.click(
             fn=generate_cards,
             inputs=[
@@ -1417,6 +1440,7 @@ with gr.Blocks(
             show_progress="full",
         )
 
+        # Export handlers remain the same
         export_csv_button.click(
             fn=export_csv,
             inputs=[output],
