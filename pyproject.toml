@@ -17,10 +17,13 @@ dependencies = [
     "tenacity>=9.1.2",
     "genanki>=0.13.1",
     "pydantic==2.10.6",
+    "pandas==2.2.3",
+    "beautifulsoup4==4.12.3",
+    "lxml==5.2.2",
 ]
 
 [project.optional-dependencies]
-dev = ["ipykernel>=6.29.5"]
+dev = ["pytest", "pytest-cov", "pytest-mock", "ruff", "black", "pre-commit"]
 
 [tool.setuptools]
 py-modules = ["app"]
