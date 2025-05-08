@@ -23,32 +23,25 @@ def update_mode_visibility(
     text_val = current_text if is_text else ""
     url_val = current_url if is_web else ""
 
-    # Return a dictionary mapping component instances (which will be in app.py scope)
-    # to their updated configurations using gr.update()
-    # Keys here are placeholders; they need to match the actual Gradio components passed in the outputs list
-    # when this function is used as an event handler in app.py.
-    return {
-        # Visibility updates for mode-specific groups
-        "subject_mode_group": gr.update(visible=is_subject),
-        "path_mode_group": gr.update(visible=is_path),
-        "text_mode_group": gr.update(visible=is_text),
-        "web_mode_group": gr.update(visible=is_web),
-        # Visibility updates for output areas
-        "path_results_group": gr.update(visible=is_path),
-        "cards_output_group": gr.update(visible=is_subject or is_text or is_web),
-        # Value updates for inputs (clear if mode changes)
-        "subject_textbox": gr.update(value=subject_val),
-        "description_textbox": gr.update(value=description_val),
-        "source_text_textbox": gr.update(value=text_val),
-        "url_textbox": gr.update(value=url_val),
-        # Clear previous results/outputs
-        "output_dataframe": gr.update(value=None),
-        "subjects_dataframe": gr.update(value=None),
-        "learning_order_markdown": gr.update(value=""),
-        "projects_markdown": gr.update(value=""),
-        "progress_html": gr.update(value="", visible=False),
-        "total_cards_number": gr.update(value=0, visible=False),
-    }
+    # Return a tuple of gr.update() calls in the order expected by app.py
+    return (
+        gr.update(visible=is_subject),
+        gr.update(visible=is_path),
+        gr.update(visible=is_text),
+        gr.update(visible=is_web),
+        gr.update(visible=is_path),
+        gr.update(visible=is_subject or is_text or is_web),
+        gr.update(value=subject_val),
+        gr.update(value=description_val),
+        gr.update(value=text_val),
+        gr.update(value=url_val),
+        gr.update(value=None),
+        gr.update(value=None),
+        gr.update(value=""),
+        gr.update(value=""),
+        gr.update(value="", visible=False),
+        gr.update(value=0, visible=False),
+    )
 
 
 def use_selected_subjects(subjects_df: pd.DataFrame | None):
