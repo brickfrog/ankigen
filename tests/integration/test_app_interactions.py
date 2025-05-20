@@ -9,7 +9,7 @@ from ankigen_core.learning_path import analyze_learning_path
 from ankigen_core.card_generator import (
     orchestrate_card_generation,
 )
-from ankigen_core.exporters import export_csv, export_deck
+from ankigen_core.exporters import export_dataframe_to_csv, export_dataframe_to_apkg
 
 # For mocking
 from unittest.mock import patch, MagicMock, ANY
@@ -183,7 +183,7 @@ def test_generation_mode_change_updates_ui_correctly(
 @patch("ankigen_core.learning_path.structured_output_completion")
 @patch("ankigen_core.learning_path.OpenAIClientManager")  # To mock the instance passed
 @patch("ankigen_core.learning_path.ResponseCache")  # To mock the instance passed
-def test_analyze_learning_path_button_click(
+async def test_analyze_learning_path_button_click(
     mock_response_cache_class, mock_client_manager_class, mock_soc
 ):
     """
@@ -226,7 +226,7 @@ def test_analyze_learning_path_button_click(
     mock_soc.return_value = mock_llm_response
 
     # Call the function that the button click would trigger
-    df_subjects, md_order, md_projects = analyze_learning_path(
+    df_subjects, md_order, md_projects = await analyze_learning_path(
         client_manager=mock_client_manager_instance,
         cache=mock_cache_instance,
         api_key=test_api_key,
@@ -261,7 +261,7 @@ def test_analyze_learning_path_button_click(
 
     # Test for gr.Error when API key is missing
     with pytest.raises(gr.Error, match="API key is required"):
-        analyze_learning_path(
+        await analyze_learning_path(
             client_manager=mock_client_manager_instance,
             cache=mock_cache_instance,
             api_key="",  # Empty API key
@@ -272,7 +272,7 @@ def test_analyze_learning_path_button_click(
     # Test for gr.Error when structured_output_completion returns invalid format
     mock_soc.return_value = {"wrong_key": "data"}  # Invalid response from LLM
     with pytest.raises(gr.Error, match="invalid API response format"):
-        analyze_learning_path(
+        await analyze_learning_path(
             client_manager=mock_client_manager_instance,
             cache=mock_cache_instance,
             api_key=test_api_key,
@@ -403,7 +403,7 @@ def get_orchestrator_mock_inputs(generation_mode="subject", api_key="sk-test"):
 @patch(
     "ankigen_core.card_generator.gr"
 )  # Mocking the entire gradio module used within card_generator
-def test_generate_button_click_subject_mode(
+async def test_generate_button_click_subject_mode(
     mock_gr, mock_response_cache_class, mock_client_manager_class, mock_soc, mock_gcb
 ):
     """Test orchestrate_card_generation for 'subject' mode."""
@@ -449,7 +449,7 @@ def test_generate_button_click_subject_mode(
     mock_soc.return_value = mock_topic_response  # For the topics call
     mock_gcb.side_effect = [mock_cards_batch_alpha, mock_cards_batch_beta]
 
-    df_result, status_html, count = orchestrate_card_generation(
+    df_result, status_html, count = await orchestrate_card_generation(
         client_manager=mock_client_manager_instance,
         cache=mock_cache_instance,
         **mock_inputs,
@@ -508,7 +508,7 @@ def test_generate_button_click_subject_mode(
 @patch("ankigen_core.card_generator.OpenAIClientManager")
 @patch("ankigen_core.card_generator.ResponseCache")
 @patch("ankigen_core.card_generator.gr")  # Mocking the entire gradio module
-def test_generate_button_click_text_mode(
+async def test_generate_button_click_text_mode(
     mock_gr, mock_response_cache_class, mock_client_manager_class, mock_soc
 ):
     """Test orchestrate_card_generation for 'text' mode."""
@@ -550,7 +550,7 @@ def test_generate_button_click_text_mode(
 
     # orchestrate_card_generation calls generate_cards_batch internally, which then calls structured_output_completion.
     # For text mode, orchestrate_card_generation directly calls structured_output_completion.
-    df_result, status_html, count = orchestrate_card_generation(
+    df_result, status_html, count = await orchestrate_card_generation(
         client_manager=mock_client_manager_instance,
         cache=mock_cache_instance,
         **mock_inputs,
@@ -588,7 +588,7 @@ def test_generate_button_click_text_mode(
 @patch("ankigen_core.card_generator.OpenAIClientManager")
 @patch("ankigen_core.card_generator.ResponseCache")
 @patch("ankigen_core.card_generator.gr")  # Mocking the entire gradio module
-def test_generate_button_click_web_mode(
+async def test_generate_button_click_web_mode(
     mock_gr,
     mock_response_cache_class,
     mock_client_manager_class,
@@ -624,7 +624,7 @@ def test_generate_button_click_web_mode(
     mock_soc.return_value = mock_card_data_from_web
 
     # Call the function (successful path)
-    df_result, status_html, count = orchestrate_card_generation(
+    df_result, status_html, count = await orchestrate_card_generation(
         client_manager=mock_client_manager_instance,
         cache=mock_cache_instance,
         **mock_inputs,
@@ -648,7 +648,7 @@ def test_generate_button_click_web_mode(
     mock_fetch_web.side_effect = ConnectionError(fetch_error_message)
 
     # Call the function again, expecting gr.Error to be called by the production code
-    df_err, html_err, count_err = orchestrate_card_generation(
+    df_err, html_err, count_err = await orchestrate_card_generation(
         client_manager=mock_client_manager_instance,
         cache=mock_cache_instance,
         **mock_inputs,
@@ -668,7 +668,7 @@ def test_generate_button_click_web_mode(
 @patch("ankigen_core.card_generator.OpenAIClientManager")
 @patch("ankigen_core.card_generator.ResponseCache")
 @patch("ankigen_core.card_generator.gr")  # Mock gr for this test too
-def test_generate_button_click_path_mode_error(
+async def test_generate_button_click_path_mode_error(
     mock_gr,  # mock_gr is an argument
     mock_response_cache_class,
     mock_client_manager_class,
@@ -679,7 +679,7 @@ def test_generate_button_click_path_mode_error(
     mock_inputs = get_orchestrator_mock_inputs(generation_mode="path")
 
     # Call the function
-    df_err, html_err, count_err = orchestrate_card_generation(
+    df_err, html_err, count_err = await orchestrate_card_generation(
         client_manager=mock_client_manager_instance,
         cache=mock_cache_instance,
         **mock_inputs,
@@ -699,8 +699,8 @@ def test_generate_button_click_path_mode_error(
 def test_export_csv_button_click(mocker):  # Added mocker fixture
     """Test that export_csv_button click calls the correct core function."""
     # Patch the target function as it's imported in *this test module*
-    mock_export_csv_in_test_module = mocker.patch(
-        "tests.integration.test_app_interactions.export_csv"
+    mock_export_df_to_csv_in_test_module = mocker.patch(
+        "tests.integration.test_app_interactions.export_dataframe_to_csv"
     )
 
     # Simulate the DataFrame that would be in the UI
@@ -719,15 +719,15 @@ def test_export_csv_button_click(mocker):  # Added mocker fixture
     }
     mock_ui_dataframe = pd.DataFrame(sample_df_data)
     # Set the return value on the mock that will actually be called
-    mock_export_csv_in_test_module.return_value = "/fake/path/export.csv"
+    mock_export_df_to_csv_in_test_module.return_value = "/fake/path/export.csv"
 
     # Simulate the call that app.py would make.
-    # Here we are directly calling the `export_csv` function imported at the top of this test file.
-    # This imported function is now replaced by `mock_export_csv_in_test_module`.
-    result_path = export_csv(mock_ui_dataframe)
+    # Here we are directly calling the `export_dataframe_to_csv` function imported at the top of this test file.
+    # This imported function is now replaced by `mock_export_df_to_csv_in_test_module`.
+    result_path = export_dataframe_to_csv(mock_ui_dataframe)
 
     # Assert the core function was called correctly
-    mock_export_csv_in_test_module.assert_called_once_with(mock_ui_dataframe)
+    mock_export_df_to_csv_in_test_module.assert_called_once_with(mock_ui_dataframe)
     assert result_path == "/fake/path/export.csv"
 
 
@@ -735,8 +735,8 @@ def test_export_csv_button_click(mocker):  # Added mocker fixture
 def test_export_anki_button_click(mocker):  # Added mocker fixture
     """Test that export_anki_button click calls the correct core function."""
     # Patch the target function as it's imported in *this test module*
-    mock_export_deck_in_test_module = mocker.patch(
-        "tests.integration.test_app_interactions.export_deck"
+    mock_export_df_to_apkg_in_test_module = mocker.patch(
+        "tests.integration.test_app_interactions.export_dataframe_to_apkg"
     )
 
     # Simulate the DataFrame and subject input
@@ -755,13 +755,27 @@ def test_export_anki_button_click(mocker):  # Added mocker fixture
     }
     mock_ui_dataframe = pd.DataFrame(sample_df_data)
     mock_subject_input = "My Anki Deck Subject"
-    mock_export_deck_in_test_module.return_value = "/fake/path/export.apkg"
+    mock_export_df_to_apkg_in_test_module.return_value = "/fake/path/export.apkg"
 
     # Simulate the call that app.py would make
-    result_path = export_deck(mock_ui_dataframe, mock_subject_input)
+    # The new function export_dataframe_to_apkg expects df, output_path, deck_name
+    # The test was calling export_deck(df, subject)
+    # The app.py now has a lambda for this: handle_export_dataframe_to_apkg_click(df, deck_name)
+    # So the test needs to reflect this, assuming a deck_name is passed.
+    # For this integration test, we are testing the function call itself as imported,
+    # not the full Gradio handler. The imported function is export_dataframe_to_apkg.
+    # It requires output_path and deck_name. The test needs to be adjusted.
+    # Let's assume the test is checking the core logic if the function *were* called with df and deck_name.
+    # The app.py handler constructs the output_path.
+    # For this test, we'll directly call export_dataframe_to_apkg which is what's imported.
+    # We need to provide a dummy output_path for the test.
+    dummy_output_path = "/fake/output/path.apkg"
+    result_path = export_dataframe_to_apkg(
+        mock_ui_dataframe, dummy_output_path, mock_subject_input
+    )
 
     # Assert the core function was called correctly
-    mock_export_deck_in_test_module.assert_called_once_with(
-        mock_ui_dataframe, mock_subject_input
+    mock_export_df_to_apkg_in_test_module.assert_called_once_with(
+        mock_ui_dataframe, dummy_output_path, mock_subject_input
     )
     assert result_path == "/fake/path/export.apkg"

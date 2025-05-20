@@ -30,7 +30,7 @@ def mock_response_cache_learning_path():
 
 
 @patch("ankigen_core.learning_path.structured_output_completion")
-def test_analyze_learning_path_success(
+async def test_analyze_learning_path_success(
     mock_soc, mock_client_manager_learning_path, mock_response_cache_learning_path
 ):
     """Test successful learning path analysis."""
@@ -59,7 +59,7 @@ def test_analyze_learning_path_success(
     }
     mock_soc.return_value = mock_response
 
-    df_result, order_text, projects_text = analyze_learning_path(
+    df_result, order_text, projects_text = await analyze_learning_path(
         client_manager=manager,
         cache=cache,
         api_key=api_key,
@@ -91,8 +91,10 @@ def test_analyze_learning_path_success(
     assert "Suggested Projects" in projects_text
     assert "Analyze a sample dataset." in projects_text
 
+    assert projects_text == mock_response["projects"]
 
-def test_analyze_learning_path_no_api_key(
+
+async def test_analyze_learning_path_no_api_key(
     mock_client_manager_learning_path, mock_response_cache_learning_path
 ):
     """Test that gr.Error is raised if API key is missing."""
@@ -100,7 +102,7 @@ def test_analyze_learning_path_no_api_key(
     cache = mock_response_cache_learning_path
 
     with pytest.raises(gr.Error, match="API key is required"):
-        analyze_learning_path(
+        await analyze_learning_path(
             client_manager=manager,
             cache=cache,
             api_key="",  # Empty API key
@@ -109,7 +111,7 @@ def test_analyze_learning_path_no_api_key(
         )
 
 
-def test_analyze_learning_path_client_init_error(
+async def test_analyze_learning_path_client_init_error(
     mock_client_manager_learning_path, mock_response_cache_learning_path
 ):
     """Test that gr.Error is raised if client initialization fails."""
@@ -119,7 +121,7 @@ def test_analyze_learning_path_client_init_error(
     manager.initialize_client.side_effect = ValueError(error_msg)
 
     with pytest.raises(gr.Error, match=f"OpenAI Client Error: {error_msg}"):
-        analyze_learning_path(
+        await analyze_learning_path(
             client_manager=manager,
             cache=cache,
             api_key="invalid_key",
@@ -129,7 +131,7 @@ def test_analyze_learning_path_client_init_error(
 
 
 @patch("ankigen_core.learning_path.structured_output_completion")
-def test_analyze_learning_path_api_error(
+async def test_analyze_learning_path_api_error(
     mock_soc, mock_client_manager_learning_path, mock_response_cache_learning_path
 ):
     """Test that errors from structured_output_completion are handled."""
@@ -139,7 +141,7 @@ def test_analyze_learning_path_api_error(
     mock_soc.side_effect = OpenAIError(error_msg)
 
     with pytest.raises(gr.Error, match=f"Failed to analyze learning path: {error_msg}"):
-        analyze_learning_path(
+        await analyze_learning_path(
             client_manager=manager,
             cache=cache,
             api_key="valid_key",
@@ -149,7 +151,7 @@ def test_analyze_learning_path_api_error(
 
 
 @patch("ankigen_core.learning_path.structured_output_completion")
-def test_analyze_learning_path_invalid_response_format(
+async def test_analyze_learning_path_invalid_response_format(
     mock_soc, mock_client_manager_learning_path, mock_response_cache_learning_path
 ):
     """Test handling of invalid response format from API."""
@@ -183,7 +185,7 @@ def test_analyze_learning_path_invalid_response_format(
         mock_soc.reset_mock()
         mock_soc.return_value = mock_response
         with pytest.raises(gr.Error, match="invalid API response format"):
-            analyze_learning_path(
+            await analyze_learning_path(
                 client_manager=manager,
                 cache=cache,
                 api_key="valid_key",
@@ -193,7 +195,7 @@ def test_analyze_learning_path_invalid_response_format(
 
 
 @patch("ankigen_core.learning_path.structured_output_completion")
-def test_analyze_learning_path_no_valid_subjects(
+async def test_analyze_learning_path_no_valid_subjects(
     mock_soc, mock_client_manager_learning_path, mock_response_cache_learning_path
 ):
     """Test handling when API returns subjects but none are valid."""
@@ -208,7 +210,7 @@ def test_analyze_learning_path_no_valid_subjects(
     mock_soc.return_value = mock_response
 
     with pytest.raises(gr.Error, match="API returned no valid subjects"):
-        analyze_learning_path(
+        await analyze_learning_path(
             client_manager=manager,
             cache=cache,
             api_key="valid_key",
@@ -218,7 +220,7 @@ def test_analyze_learning_path_no_valid_subjects(
 
 
 @patch("ankigen_core.learning_path.structured_output_completion")
-def test_analyze_learning_path_invalid_subject_structure(
+async def test_analyze_learning_path_invalid_subject_structure(
     mock_soc, mock_client_manager_learning_path, mock_response_cache_learning_path
 ):
     """Test handling when subjects list contains ONLY invalid/incomplete dicts."""
@@ -248,7 +250,7 @@ def test_analyze_learning_path_invalid_subject_structure(
         mock_soc.reset_mock()
         mock_soc.return_value = mock_response
         with pytest.raises(gr.Error, match="API returned no valid subjects"):
-            analyze_learning_path(
+            await analyze_learning_path(
                 client_manager=manager,
                 cache=cache,
                 api_key="valid_key",

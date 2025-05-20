@@ -13,6 +13,8 @@ from ankigen_core.models import (
     ConceptBreakdown,
     CardGeneration,
     LearningSequence,
+    CrawledPage,
+    AnkiCardData,
 )
 
 
@@ -260,3 +262,147 @@ def test_learning_sequence_creation():
 def test_learning_sequence_missing_fields():
     with pytest.raises(ValidationError):
         LearningSequence(topic="Test")  # Missing concepts, cards, etc.
+
+
+# Tests for CrawledPage model
+def test_crawled_page_creation():
+    page_data = {
+        "url": "http://example.com/page1",
+        "html_content": "<html><body><h1>Title</h1><p>Content</p></body></html>",
+        "text_content": "Title Content",
+        "title": "Example Title",
+        "crawl_depth": 1,
+        "parent_url": "http://example.com",
+    }
+    page = CrawledPage(**page_data)
+    assert page.url == page_data["url"]
+    assert page.html_content == page_data["html_content"]
+    assert page.text_content == page_data["text_content"]
+    assert page.title == page_data["title"]
+    assert page.crawl_depth == page_data["crawl_depth"]
+    assert page.parent_url == page_data["parent_url"]
+
+
+def test_crawled_page_defaults():
+    page_data = {
+        "url": "http://example.com/page2",
+        "html_content": "<html></html>",
+        "text_content": "",
+    }
+    page = CrawledPage(**page_data)
+    assert page.title is None
+    assert page.crawl_depth == 0
+    assert page.parent_url is None
+
+
+def test_crawled_page_missing_required_fields():
+    with pytest.raises(ValidationError):
+        CrawledPage(html_content="<html></html>", text_content="")  # Missing url
+    with pytest.raises(ValidationError):
+        CrawledPage(url="http://example.com", text_content="")  # Missing html_content
+    with pytest.raises(ValidationError):
+        CrawledPage(
+            url="http://example.com", html_content="<html></html>"
+        )  # Missing text_content
+
+
+def test_crawled_page_serialization():
+    page_data = {
+        "url": "http://example.com/page1",
+        "html_content": "<html><body><h1>Title</h1><p>Content</p></body></html>",
+        "text_content": "Title Content",
+        "title": "Example Title",
+        "crawl_depth": 1,
+        "parent_url": "http://example.com",
+    }
+    page = CrawledPage(**page_data)
+
+    # Prepare expected data, starting with the input
+    expected_data_for_dump = page_data.copy()
+
+    # Add fields with default values or those computed by __init__
+    expected_data_for_dump.setdefault("meta_description", None)
+    expected_data_for_dump.setdefault("meta_keywords", [])
+
+    # Get the dumped model which will include fields from default_factory like last_crawled_at
+    dumped_model = page.model_dump()
+
+    # Align last_crawled_at for comparison
+    # Take the value from the dumped model and put it into expected_data for exact match
+    if "last_crawled_at" in dumped_model:
+        actual_last_crawled_at = dumped_model["last_crawled_at"]
+        expected_data_for_dump["last_crawled_at"] = actual_last_crawled_at
+    else:  # Should not happen if field has default_factory
+        expected_data_for_dump.pop("last_crawled_at", None)
+
+    assert dumped_model == expected_data_for_dump
+
+
+def test_crawled_page_with_metadata():
+    page_data = {
+        "url": "http://example.com/metadata_page",
+        "html_content": "<html><body>Meta content</body></html>",
+        "text_content": "Meta content",
+        "title": "Metadata Test Page",
+        "meta_description": "This is a test description.",
+        "meta_keywords": ["test", "metadata", "example"],
+        "crawl_depth": 0,
+    }
+    page = CrawledPage(**page_data)
+    assert page.url == "http://example.com/metadata_page"
+    assert page.title == "Metadata Test Page"
+    assert page.meta_description == "This is a test description."
+    assert page.meta_keywords == ["test", "metadata", "example"]
+    assert page.crawl_depth == 0
+    assert page.parent_url is None  # Not provided, should be default
+
+
+# Tests for AnkiCardData model
+def test_anki_card_data_creation():
+    card_data_dict = {
+        "front": "What is PydanticAI?",
+        "back": "An agent framework.",
+        "tags": ["python", "ai"],
+        "source_url": "http://example.com/pydantic-ai",
+        "note_type": "Q&A",
+    }
+    card = AnkiCardData(**card_data_dict)
+    assert card.front == card_data_dict["front"]
+    assert card.back == card_data_dict["back"]
+    assert card.tags == card_data_dict["tags"]
+    assert card.source_url == card_data_dict["source_url"]
+    assert card.note_type == card_data_dict["note_type"]
+
+
+def test_anki_card_data_defaults():
+    card_data_dict = {"front": "Question?", "back": "Answer."}
+    card = AnkiCardData(**card_data_dict)
+    assert card.tags == []
+    assert card.source_url is None
+    assert card.note_type == "Basic"
+
+
+def test_anki_card_data_missing_required_fields():
+    with pytest.raises(ValidationError):
+        AnkiCardData(back="Answer")  # Missing front
+    with pytest.raises(ValidationError):
+        AnkiCardData(front="Question")  # Missing back
+
+
+def test_anki_card_data_serialization():
+    card_data_dict = {
+        "front": "What is PydanticAI?",
+        "back": "An agent framework.",
+        "tags": ["python", "ai"],
+        "source_url": "http://example.com/pydantic-ai",
+        "note_type": "Q&A",
+    }
+    card = AnkiCardData(**card_data_dict)
+    # model_dump will exclude Nones by default if not set otherwise,
+    # and default_factory lists will be present
+    expected_dump = card_data_dict.copy()
+    if not expected_dump.get("tags"):
+        expected_dump[
+            "tags"
+        ] = []  # pydantic >=2.0 includes fields with default_factory in dump
+    assert card.model_dump() == expected_dump
