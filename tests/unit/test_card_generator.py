@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock, ANY
 import pandas as pd
 
 # Assuming Pydantic models, ResponseCache etc. are needed
-from ankigen_core.models import Card, CardFront, CardBack
+from ankigen_core.models import Card, CardFront, CardBack, AnkiCardData
 from ankigen_core.utils import ResponseCache
 from ankigen_core.llm_interface import OpenAIClientManager  # Needed for type hints
 
@@ -43,7 +43,7 @@ def mock_response_cache_fixture():
 
 
 @patch("ankigen_core.card_generator.structured_output_completion")
-def test_generate_cards_batch_success(
+async def test_generate_cards_batch_success(
     mock_soc, mock_openai_client_fixture, mock_response_cache_fixture
 ):
     """Test successful card generation using generate_cards_batch."""
@@ -73,7 +73,7 @@ def test_generate_cards_batch_success(
         ]
     }
 
-    result_cards = card_generator.generate_cards_batch(
+    result_cards = await card_generator.generate_cards_batch(
         openai_client=mock_openai_client,
         cache=mock_response_cache,
         model=model,
@@ -104,7 +104,7 @@ def test_generate_cards_batch_success(
 
 
 @patch("ankigen_core.card_generator.structured_output_completion")
-def test_generate_cards_batch_cloze_prompt(
+async def test_generate_cards_batch_cloze_prompt(
     mock_soc, mock_openai_client_fixture, mock_response_cache_fixture
 ):
     """Test generate_cards_batch includes cloze instructions when requested."""
@@ -112,7 +112,7 @@ def test_generate_cards_batch_cloze_prompt(
     mock_response_cache = mock_response_cache_fixture
     mock_soc.return_value = {"cards": []}  # Return empty for simplicity
 
-    card_generator.generate_cards_batch(
+    await card_generator.generate_cards_batch(
         openai_client=mock_openai_client,
         cache=mock_response_cache,
         model="gpt-test",
@@ -134,7 +134,7 @@ def test_generate_cards_batch_cloze_prompt(
 
 
 @patch("ankigen_core.card_generator.structured_output_completion")
-def test_generate_cards_batch_api_error(
+async def test_generate_cards_batch_api_error(
     mock_soc, mock_openai_client_fixture, mock_response_cache_fixture
 ):
     """Test generate_cards_batch handles API errors by re-raising."""
@@ -144,7 +144,7 @@ def test_generate_cards_batch_api_error(
     mock_soc.side_effect = ValueError(error_message)  # Simulate error from SOC
 
     with pytest.raises(ValueError, match=error_message):
-        card_generator.generate_cards_batch(
+        await card_generator.generate_cards_batch(
             openai_client=mock_openai_client,
             cache=mock_response_cache,
             model="gpt-test",
@@ -156,7 +156,7 @@ def test_generate_cards_batch_api_error(
 
 
 @patch("ankigen_core.card_generator.structured_output_completion")
-def test_generate_cards_batch_invalid_response(
+async def test_generate_cards_batch_invalid_response(
     mock_soc, mock_openai_client_fixture, mock_response_cache_fixture
 ):
     """Test generate_cards_batch handles invalid JSON or missing keys."""
@@ -165,7 +165,7 @@ def test_generate_cards_batch_invalid_response(
     mock_soc.return_value = {"wrong_key": []}  # Missing 'cards' key
 
     with pytest.raises(ValueError, match="Failed to generate cards"):
-        card_generator.generate_cards_batch(
+        await card_generator.generate_cards_batch(
             openai_client=mock_openai_client,
             cache=mock_response_cache,
             model="gpt-test",
@@ -210,7 +210,7 @@ def base_orchestrator_args(api_key="valid_key", **kwargs):
 
 @patch("ankigen_core.card_generator.structured_output_completion")
 @patch("ankigen_core.card_generator.generate_cards_batch")
-def test_orchestrate_subject_mode(
+async def test_orchestrate_subject_mode(
     mock_gcb, mock_soc, mock_client_manager_fixture, mock_response_cache_fixture
 ):
     """Test orchestrate_card_generation in 'subject' mode."""
@@ -235,7 +235,7 @@ def test_orchestrate_subject_mode(
 
     # Patch gr.Info/Warning
     with patch("gradio.Info"), patch("gradio.Warning"):
-        df_result, status, count = card_generator.orchestrate_card_generation(
+        df_result, status, count = await card_generator.orchestrate_card_generation(
             client_manager=manager, cache=cache, **args
         )
 
@@ -278,7 +278,7 @@ def test_orchestrate_subject_mode(
 
 @patch("ankigen_core.card_generator.structured_output_completion")
 @patch("ankigen_core.card_generator.generate_cards_batch")
-def test_orchestrate_text_mode(
+async def test_orchestrate_text_mode(
     mock_gcb, mock_soc, mock_client_manager_fixture, mock_response_cache_fixture
 ):
     """Test orchestrate_card_generation in 'text' mode."""
@@ -287,7 +287,7 @@ def test_orchestrate_text_mode(
     args = base_orchestrator_args(generation_mode="text")
     mock_soc.return_value = {"cards": []}
 
-    card_generator.orchestrate_card_generation(
+    await card_generator.orchestrate_card_generation(
         client_manager=manager, cache=cache, **args
     )
 
@@ -298,7 +298,7 @@ def test_orchestrate_text_mode(
 
 @patch("ankigen_core.card_generator.fetch_webpage_text")
 @patch("ankigen_core.card_generator.structured_output_completion")
-def test_orchestrate_web_mode(
+async def test_orchestrate_web_mode(
     mock_soc, mock_fetch, mock_client_manager_fixture, mock_response_cache_fixture
 ):
     """Test orchestrate_card_generation in 'web' mode."""
@@ -315,7 +315,7 @@ def test_orchestrate_web_mode(
     # Mock gr.Info and gr.Warning to avoid Gradio UI calls during test
     # Removed the incorrect pytest.raises and mock_gr_warning patch from here
     with patch("gradio.Info"), patch("gradio.Warning"):
-        card_generator.orchestrate_card_generation(
+        await card_generator.orchestrate_card_generation(
             client_manager=manager, cache=cache, **args
         )
 
@@ -329,7 +329,7 @@ def test_orchestrate_web_mode(
 @patch(
     "ankigen_core.card_generator.gr.Error"
 )  # Mock gr.Error used by orchestrate_card_generation
-def test_orchestrate_web_mode_fetch_error(
+async def test_orchestrate_web_mode_fetch_error(
     mock_gr_error, mock_fetch, mock_client_manager_fixture, mock_response_cache_fixture
 ):
     """Test 'web' mode handles errors during webpage fetching by calling gr.Error."""
@@ -340,7 +340,7 @@ def test_orchestrate_web_mode_fetch_error(
     mock_fetch.side_effect = ConnectionError(error_msg)
 
     with patch("gradio.Info"), patch("gradio.Warning"):
-        df, status_msg, count = card_generator.orchestrate_card_generation(
+        df, status_msg, count = await card_generator.orchestrate_card_generation(
             client_manager=manager, cache=cache, **args
         )
 
@@ -356,7 +356,7 @@ def test_orchestrate_web_mode_fetch_error(
 
 @patch("ankigen_core.card_generator.structured_output_completion")  # Patch SOC
 @patch("ankigen_core.card_generator.generate_cards_batch")
-def test_orchestrate_generation_batch_error(
+async def test_orchestrate_generation_batch_error(
     mock_gcb, mock_soc, mock_client_manager_fixture, mock_response_cache_fixture
 ):
     """Test orchestrator handles errors from generate_cards_batch."""
@@ -379,7 +379,7 @@ def test_orchestrate_generation_batch_error(
     # Removed pytest.raises
     with patch("gradio.Info"), patch("gradio.Warning") as mock_gr_warning:
         # Add the call to the function back in
-        card_generator.orchestrate_card_generation(
+        await card_generator.orchestrate_card_generation(
             client_manager=manager, cache=cache, **args
         )
 
@@ -393,7 +393,7 @@ def test_orchestrate_generation_batch_error(
 
 
 @patch("ankigen_core.card_generator.gr.Error")
-def test_orchestrate_path_mode_raises_not_implemented(
+async def test_orchestrate_path_mode_raises_not_implemented(
     mock_gr_error, mock_client_manager_fixture, mock_response_cache_fixture
 ):
     """Test 'path' mode calls gr.Error for being unsupported."""
@@ -401,7 +401,7 @@ def test_orchestrate_path_mode_raises_not_implemented(
     cache = mock_response_cache_fixture
     args = base_orchestrator_args(generation_mode="path")
 
-    df, status_msg, count = card_generator.orchestrate_card_generation(
+    df, status_msg, count = await card_generator.orchestrate_card_generation(
         client_manager=manager, cache=cache, **args
     )
 
@@ -414,7 +414,7 @@ def test_orchestrate_path_mode_raises_not_implemented(
 
 
 @patch("ankigen_core.card_generator.gr.Error")
-def test_orchestrate_invalid_mode_raises_value_error(
+async def test_orchestrate_invalid_mode_raises_value_error(
     mock_gr_error, mock_client_manager_fixture, mock_response_cache_fixture
 ):
     """Test invalid mode calls gr.Error."""
@@ -422,7 +422,7 @@ def test_orchestrate_invalid_mode_raises_value_error(
     cache = mock_response_cache_fixture
     args = base_orchestrator_args(generation_mode="invalid_mode")
 
-    df, status_msg, count = card_generator.orchestrate_card_generation(
+    df, status_msg, count = await card_generator.orchestrate_card_generation(
         client_manager=manager, cache=cache, **args
     )
 
@@ -437,7 +437,7 @@ def test_orchestrate_invalid_mode_raises_value_error(
 
 
 @patch("ankigen_core.card_generator.gr.Error")
-def test_orchestrate_no_api_key_raises_error(
+async def test_orchestrate_no_api_key_raises_error(
     mock_gr_error, mock_client_manager_fixture, mock_response_cache_fixture
 ):
     """Test orchestrator calls gr.Error if API key is missing."""
@@ -445,7 +445,7 @@ def test_orchestrate_no_api_key_raises_error(
     cache = mock_response_cache_fixture
     args = base_orchestrator_args(api_key="")  # Empty API key
 
-    df, status_msg, count = card_generator.orchestrate_card_generation(
+    df, status_msg, count = await card_generator.orchestrate_card_generation(
         client_manager=manager, cache=cache, **args
     )
 
@@ -458,7 +458,7 @@ def test_orchestrate_no_api_key_raises_error(
 
 
 @patch("ankigen_core.card_generator.gr.Error")
-def test_orchestrate_client_init_error_raises_error(
+async def test_orchestrate_client_init_error_raises_error(
     mock_gr_error, mock_client_manager_fixture, mock_response_cache_fixture
 ):
     """Test orchestrator calls gr.Error if client initialization fails."""
@@ -468,7 +468,7 @@ def test_orchestrate_client_init_error_raises_error(
     error_msg = "Invalid API Key"
     manager.initialize_client.side_effect = ValueError(error_msg)
 
-    df, status_msg, count = card_generator.orchestrate_card_generation(
+    df, status_msg, count = await card_generator.orchestrate_card_generation(
         client_manager=manager, cache=cache, **args
     )
 
@@ -478,3 +478,287 @@ def test_orchestrate_client_init_error_raises_error(
     assert df.columns.tolist() == get_dataframe_columns()
     assert status_msg == f"OpenAI Client Error: {error_msg}"
     assert count == 0
+
+
+# --- Tests for process_anki_card_data ---
+
+
+@pytest.fixture
+def sample_anki_card_data_list() -> list[AnkiCardData]:
+    """Provides a list of sample AnkiCardData objects for testing."""
+    return [
+        AnkiCardData(
+            front="Question 1",
+            back="Answer 1",
+            tags=["tagA", "tagB"],
+            source_url="http://example.com/source1",
+            note_type="Basic",
+        ),
+        AnkiCardData(
+            front="Question 2",
+            back="Answer 2",
+            tags=[],  # Changed from None to empty list
+            source_url=None,  # This is Optional[str], so None is fine
+            note_type="Cloze",
+        ),
+        AnkiCardData(
+            front="Question 3",
+            back="Answer 3",
+            tags=[],  # Empty tags list is fine
+            source_url="http://example.com/source3",
+            note_type="Basic",  # Changed from None to "Basic"
+        ),
+    ]
+
+
+def test_process_anki_card_data_basic_conversion(sample_anki_card_data_list):
+    """Test basic conversion of AnkiCardData to dicts."""
+    input_cards = sample_anki_card_data_list
+    processed = card_generator.process_anki_card_data(input_cards)
+
+    assert len(processed) == 3
+    assert isinstance(processed[0], dict)
+    assert processed[0]["front"] == "Question 1"
+    assert (
+        processed[0]["back"]
+        == "Answer 1\\n\\n<hr><small>Source: <a href='http://example.com/source1'>http://example.com/source1</a></small>"
+    )
+    assert processed[0]["tags"] == "tagA tagB"
+    assert processed[0]["note_type"] == "Basic"
+
+    assert processed[1]["front"] == "Question 2"
+    assert processed[1]["back"] == "Answer 2"  # No source_url, so no extra HTML
+    assert processed[1]["tags"] == ""  # No tags, so empty string
+    assert processed[1]["note_type"] == "Cloze"
+
+    assert processed[2]["front"] == "Question 3"
+    assert "<hr><small>Source" in processed[2]["back"]
+    assert "http://example.com/source3" in processed[2]["back"]
+    assert processed[2]["tags"] == ""  # Empty tags list, so empty string
+    assert processed[2]["note_type"] == "Basic"  # None should default to Basic
+
+
+def test_process_anki_card_data_empty_list():
+    """Test processing an empty list of cards."""
+    processed = card_generator.process_anki_card_data([])
+    assert processed == []
+
+
+def test_process_anki_card_data_source_url_formatting(sample_anki_card_data_list):
+    """Test that the source_url is correctly formatted and appended to the back."""
+    # Test with the first card that has a source_url
+    card_with_source = [sample_anki_card_data_list[0]]
+    processed = card_generator.process_anki_card_data(card_with_source)
+    expected_back_html = "\\n\\n<hr><small>Source: <a href='http://example.com/source1'>http://example.com/source1</a></small>"
+    assert processed[0]["back"].endswith(expected_back_html)
+
+    # Test with the second card that has no source_url
+    card_without_source = [sample_anki_card_data_list[1]]
+    processed_no_source = card_generator.process_anki_card_data(card_without_source)
+    assert "<hr><small>Source:" not in processed_no_source[0]["back"]
+
+
+def test_process_anki_card_data_tags_formatting(sample_anki_card_data_list):
+    """Test tags are correctly joined into a space-separated string."""
+    processed = card_generator.process_anki_card_data(sample_anki_card_data_list)
+    assert processed[0]["tags"] == "tagA tagB"
+    assert processed[1]["tags"] == ""  # None tags
+    assert processed[2]["tags"] == ""  # Empty list tags
+
+
+def test_process_anki_card_data_note_type_handling(sample_anki_card_data_list):
+    """Test note_type handling, including default."""
+    processed = card_generator.process_anki_card_data(sample_anki_card_data_list)
+    assert processed[0]["note_type"] == "Basic"
+    assert processed[1]["note_type"] == "Cloze"
+    assert processed[2]["note_type"] == "Basic"  # Default for None
+
+    # Test with a card where note_type is explicitly not set during AnkiCardData creation
+    # (though Pydantic default in model definition would handle this, good to be robust)
+    card_without_note_type_field = AnkiCardData(
+        front="Q", back="A"
+    )  # note_type will use Pydantic default
+    processed_single = card_generator.process_anki_card_data(
+        [card_without_note_type_field]
+    )
+    # The function itself now has: card_item.note_type if hasattr(card_item, 'note_type') else "Basic"
+    # If AnkiCardData Pydantic model has a default for note_type (e.g. "Basic"), hasattr might be true.
+    # Let's check the AnkiCardData model definition again.
+    # AnkiCardData model has: note_type: Optional[str] = "Basic"
+    # So, card_item.note_type will always exist and default to "Basic".
+    # The hasattr check in process_anki_card_data might be redundant then, but harmless.
+    assert processed_single[0]["note_type"] == "Basic"
+
+
+# --- Tests for deduplicate_cards ---
+
+
+def test_deduplicate_cards_removes_duplicates():
+    """Test that duplicate cards (based on 'front' content) are removed."""
+    cards_with_duplicates = [
+        {"front": "Q1", "back": "A1"},
+        {"front": "Q2", "back": "A2"},
+        {"front": "Q1", "back": "A1_variant"},  # Duplicate front
+        {"front": "Q3", "back": "A3"},
+        {"front": "Q2", "back": "A2_variant"},  # Duplicate front
+    ]
+    expected_cards = [
+        {"front": "Q1", "back": "A1"},
+        {"front": "Q2", "back": "A2"},
+        {"front": "Q3", "back": "A3"},
+    ]
+    assert card_generator.deduplicate_cards(cards_with_duplicates) == expected_cards
+
+
+def test_deduplicate_cards_preserves_order():
+    """Test that the order of first-seen unique cards is preserved."""
+    ordered_cards = [
+        {"front": "Q_alpha", "back": "A_alpha"},
+        {"front": "Q_beta", "back": "A_beta"},
+        {"front": "Q_gamma", "back": "A_gamma"},
+        {"front": "Q_alpha", "back": "A_alpha_redux"},  # Duplicate
+    ]
+    expected_ordered_cards = [
+        {"front": "Q_alpha", "back": "A_alpha"},
+        {"front": "Q_beta", "back": "A_beta"},
+        {"front": "Q_gamma", "back": "A_gamma"},
+    ]
+    assert card_generator.deduplicate_cards(ordered_cards) == expected_ordered_cards
+
+
+def test_deduplicate_cards_empty_list():
+    """Test deduplicating an empty list of cards."""
+    assert card_generator.deduplicate_cards([]) == []
+
+
+def test_deduplicate_cards_all_unique():
+    """Test deduplicating a list where all cards are unique."""
+    all_unique_cards = [
+        {"front": "Unique1", "back": "Ans1"},
+        {"front": "Unique2", "back": "Ans2"},
+        {"front": "Unique3", "back": "Ans3"},
+    ]
+    assert card_generator.deduplicate_cards(all_unique_cards) == all_unique_cards
+
+
+def test_deduplicate_cards_missing_front_key():
+    """Test that cards missing the 'front' key are skipped and logged."""
+    cards_with_missing_front = [
+        {"front": "Q1", "back": "A1"},
+        {"foo": "bar", "back": "A2"},  # Missing 'front' key
+        {"front": "Q3", "back": "A3"},
+    ]
+    expected_cards = [
+        {"front": "Q1", "back": "A1"},
+        {"front": "Q3", "back": "A3"},
+    ]
+    # Patch the logger within card_generator to check for the warning
+    with patch.object(card_generator.logger, "warning") as mock_log_warning:
+        result = card_generator.deduplicate_cards(cards_with_missing_front)
+        assert result == expected_cards
+        mock_log_warning.assert_called_once_with(
+            "Card skipped during deduplication due to missing 'front' key: {'foo': 'bar', 'back': 'A2'}"
+        )
+
+
+def test_deduplicate_cards_front_is_none():
+    """Test that cards where 'front' value is None are skipped and logged."""
+    cards_with_none_front = [
+        {"front": "Q1", "back": "A1"},
+        {"front": None, "back": "A2"},  # Front is None
+        {"front": "Q3", "back": "A3"},
+    ]
+    expected_cards = [
+        {"front": "Q1", "back": "A1"},
+        {"front": "Q3", "back": "A3"},
+    ]
+    with patch.object(card_generator.logger, "warning") as mock_log_warning:
+        result = card_generator.deduplicate_cards(cards_with_none_front)
+        assert result == expected_cards
+        mock_log_warning.assert_called_once_with(
+            "Card skipped during deduplication due to missing 'front' key: {'front': None, 'back': 'A2'}"
+        )  # The log message says missing 'front' key for None value as well, due to card.get('front') then checking if front_text is None.
+
+
+# --- Tests for generate_cards_from_crawled_content ---
+
+
+@patch("ankigen_core.card_generator.deduplicate_cards")
+@patch("ankigen_core.card_generator.process_anki_card_data")
+def test_generate_cards_from_crawled_content_orchestration(
+    mock_process_anki_card_data,
+    mock_deduplicate_cards,
+    sample_anki_card_data_list,  # Use the existing fixture
+):
+    """Test that generate_cards_from_crawled_content correctly orchestrates calls."""
+
+    # Setup mock return values
+    mock_processed_list = [{"front": "Processed Q1", "back": "Processed A1"}]
+    mock_process_anki_card_data.return_value = mock_processed_list
+
+    mock_unique_list = [{"front": "Unique Q1", "back": "Unique A1"}]
+    mock_deduplicate_cards.return_value = mock_unique_list
+
+    input_anki_cards = sample_anki_card_data_list  # Sample AnkiCardData objects
+
+    # Call the function under test
+    result = card_generator.generate_cards_from_crawled_content(input_anki_cards)
+
+    # Assertions
+    mock_process_anki_card_data.assert_called_once_with(input_anki_cards)
+    mock_deduplicate_cards.assert_called_once_with(mock_processed_list)
+    assert result == mock_unique_list
+
+
+def test_generate_cards_from_crawled_content_empty_input():
+    """Test with an empty list of AnkiCardData objects."""
+    with (
+        patch(
+            "ankigen_core.card_generator.process_anki_card_data", return_value=[]
+        ) as mock_process,
+        patch(
+            "ankigen_core.card_generator.deduplicate_cards", return_value=[]
+        ) as mock_dedup,
+    ):
+        result = card_generator.generate_cards_from_crawled_content([])
+        mock_process.assert_called_once_with([])
+        mock_dedup.assert_called_once_with([])
+        assert result == []
+
+
+# Example of an integration-style test (optional, as unit tests for sub-components are thorough)
+# This would not mock the internal calls.
+def test_generate_cards_from_crawled_content_integration(sample_anki_card_data_list):
+    """
+    A more integration-style test to ensure the flow works with real sub-functions.
+    This relies on the correctness of process_anki_card_data and deduplicate_cards.
+    """
+    # Construct a list that will actually have duplicates after processing
+    card1 = AnkiCardData(front="Q1", back="A1", tags=["test"], note_type="Basic")
+    card2_dup = AnkiCardData(
+        front="Q1", back="A1_variant", tags=["test"], note_type="Basic"
+    )  # Duplicate front
+    card3 = AnkiCardData(front="Q2", back="A2", tags=["test"], note_type="Basic")
+
+    input_list = [card1, card2_dup, card3]
+
+    result = card_generator.generate_cards_from_crawled_content(input_list)
+
+    # Expected result after processing and deduplication:
+    # Card1 (original) should be present. Card2_dup should be removed. Card3 should be present.
+    # Check lengths
+    assert len(result) == 2
+
+    # Check content (simplified check based on front)
+    result_fronts = [item["front"] for item in result]
+    assert "Q1" in result_fronts
+    assert "Q2" in result_fronts
+
+    # Check that the first version of Q1 was kept (A1, not A1_variant)
+    # This depends on the details of process_anki_card_data output
+    q1_card_in_result = next(item for item in result if item["front"] == "Q1")
+    assert (
+        "A1" in q1_card_in_result["back"]
+    )  # Basic check, might need refinement based on exact source_url append
+    assert "A1_variant" not in q1_card_in_result["back"]
+    # More detailed checks could verify the full structure if needed

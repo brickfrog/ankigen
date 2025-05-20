@@ -20,10 +20,22 @@ dependencies = [
     "pandas==2.2.3",
     "beautifulsoup4==4.12.3",
     "lxml==5.2.2",
+    "tiktoken>=0.9.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-cov", "pytest-mock", "ruff", "black", "pre-commit"]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "pytest-mock",
+    "ruff",
+    "black",
+    "pre-commit",
+    "pytest-anyio",
+]
 
 [tool.setuptools]
 py-modules = ["app"]
+
+[tool.pytest.ini_options]
+anyio_backend = "asyncio"

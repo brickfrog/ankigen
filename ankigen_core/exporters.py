@@ -4,18 +4,39 @@ import gradio as gr
 import pandas as pd
 import genanki
 import random
-import tempfile
+from typing import List, Dict, Any, Optional
+import csv
+from datetime import datetime
+import os
 
-from ankigen_core.utils import get_logger
+from ankigen_core.utils import get_logger, strip_html_tags
 
 logger = get_logger()
 
-# --- Anki Model Definitions --- (Moved from app.py)
 
-# Update the BASIC_MODEL definition with enhanced CSS/HTML
+# --- Helper function for formatting fields ---
+def _format_field_as_string(value: Any) -> str:
+    if isinstance(value, list) or isinstance(value, tuple):
+        return ", ".join(str(item).strip() for item in value if str(item).strip())
+    if pd.isna(value) or value is None:
+        return ""
+    return str(value).strip()
+
+
+# --- Constants for APKG Generation (Subtask 10) ---
+ANKI_BASIC_MODEL_NAME = "AnkiGen Basic"
+ANKI_CLOZE_MODEL_NAME = "AnkiGen Cloze"
+
+# It's good practice to generate unique IDs. These are examples.
+# Real applications might use a persistent way to store/retrieve these if models are updated.
+DEFAULT_BASIC_MODEL_ID = random.randrange(1 << 30, 1 << 31)
+DEFAULT_CLOZE_MODEL_ID = random.randrange(1 << 30, 1 << 31)
+
+# --- Full Model Definitions with CSS (Restored) ---
+
 BASIC_MODEL = genanki.Model(
-    random.randrange(1 << 30, 1 << 31),
-    "AnkiGen Enhanced",
+    DEFAULT_BASIC_MODEL_ID,  # Use the generated ID
+    ANKI_BASIC_MODEL_NAME,  # Use the constant name
     fields=[
         {"name": "Question"},
         {"name": "Answer"},
@@ -25,18 +46,20 @@ BASIC_MODEL = genanki.Model(
         {"name": "Learning_Outcomes"},
         {"name": "Common_Misconceptions"},
         {"name": "Difficulty"},
+        {"name": "SourceURL"},  # Added for consistency if used by template
+        {"name": "TagsStr"},  # Added for consistency if used by template
     ],
     templates=[
         {
             "name": "Card 1",
             "qfmt": """
-            <div class="card question-side">
-                <div class="difficulty-indicator {{Difficulty}}"></div>
-                <div class="content">
-                    <div class="question">{{Question}}</div>
-                    <div class="prerequisites" onclick="event.stopPropagation();">
-                        <div class="prerequisites-toggle">Show Prerequisites</div>
-                        <div class="prerequisites-content">{{Prerequisites}}</div>
+            <div class=\"card question-side\">
+                <div class=\"difficulty-indicator {{Difficulty}}\"></div>
+                <div class=\"content\">
+                    <div class=\"question\">{{Question}}</div>
+                    <div class=\"prerequisites\" onclick=\"event.stopPropagation();\">
+                        <div class=\"prerequisites-toggle\">Show Prerequisites</div>
+                        <div class=\"prerequisites-content\">{{Prerequisites}}</div>
                     </div>
                 </div>
             </div>
@@ -46,53 +69,55 @@ BASIC_MODEL = genanki.Model(
                     this.parentElement.classList.toggle('show');
                 });
             </script>
-        """,
+            """,
             "afmt": """
-            <div class="card answer-side">
-                <div class="content">
-                    <div class="question-section">
-                        <div class="question">{{Question}}</div>
-                        <div class="prerequisites">
+            <div class=\"card answer-side\">
+                <div class=\"content\">
+                    <div class=\"question-section\">
+                        <div class=\"question\">{{Question}}</div>
+                        <div class=\"prerequisites\">
                             <strong>Prerequisites:</strong> {{Prerequisites}}
                         </div>
                     </div>
                     <hr>
                     
-                    <div class="answer-section">
+                    <div class=\"answer-section\">
                         <h3>Answer</h3>
-                        <div class="answer">{{Answer}}</div>
+                        <div class=\"answer\">{{Answer}}</div>
                     </div>
                     
-                    <div class="explanation-section">
+                    <div class=\"explanation-section\">
                         <h3>Explanation</h3>
-                        <div class="explanation-text">{{Explanation}}</div>
+                        <div class=\"explanation-text\">{{Explanation}}</div>
                     </div>
                     
-                    <div class="example-section">
+                    <div class=\"example-section\">
                         <h3>Example</h3>
-                        <div class="example-text"></div>
-                        <pre><code>{{Example}}</code></pre>
+                        <div class=\"example-text\">{{Example}}</div> 
+                        <!-- Example field might contain pre/code or plain text -->
+                        <!-- Handled by how HTML is put into the Example field -->
                     </div>
                     
-                    <div class="metadata-section">
-                        <div class="learning-outcomes">
+                    <div class=\"metadata-section\">
+                        <div class=\"learning-outcomes\">
                             <h3>Learning Outcomes</h3>
                             <div>{{Learning_Outcomes}}</div>
                         </div>
                         
-                        <div class="misconceptions">
+                        <div class=\"misconceptions\">
                             <h3>Common Misconceptions - Debunked</h3>
                             <div>{{Common_Misconceptions}}</div>
                         </div>
                         
-                        <div class="difficulty">
+                        <div class=\"difficulty\">
                             <h3>Difficulty Level</h3>
                             <div>{{Difficulty}}</div>
                         </div>
+                        {{#SourceURL}}<div class=\"source-url\"><small>Source: <a href=\"{{SourceURL}}\">{{SourceURL}}</a></small></div>{{/SourceURL}}
                     </div>
                 </div>
             </div>
-        """,
+            """,
         }
     ],
     css="""
@@ -186,78 +211,77 @@ BASIC_MODEL = genanki.Model(
         }
         
         .example-section {
-            background: #fff7ed;
-            border-left: 4px solid #f97316;
+            background: #fefce8; /* Light yellow */
+            border-left: 4px solid #facc15; /* Yellow */
         }
-        
-        /* Code blocks */
-        pre code {
-            display: block;
+        .example-section pre {
+            background-color: #2d2d2d; /* Darker background for code blocks */
+            color: #f8f8f2; /* Light text for contrast */
             padding: 1em;
-            background: #1e293b;
-            color: #e2e8f0;
-            border-radius: 6px;
-            overflow-x: auto;
-            font-family: 'Fira Code', 'Consolas', monospace;
+            border-radius: 0.3em;
+            overflow-x: auto; /* Horizontal scroll for long lines */
+            font-family: 'Consolas', 'Monaco', 'Menlo', monospace;
             font-size: 0.9em;
+            line-height: 1.4;
+        }
+
+        .example-section code {
+             font-family: 'Consolas', 'Monaco', 'Menlo', monospace;
         }
         
-        /* Metadata tabs */
-        .metadata-tabs {
+        .metadata-section {
             margin-top: 2em;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            overflow: hidden;
+            padding-top: 1em;
+            border-top: 1px solid #e5e7eb; /* Light gray border */
+            font-size: 0.9em;
+            color: #4b5563; /* Cool gray */
         }
         
-        .tab-buttons {
-            display: flex;
-            background: #f8fafc;
-            border-bottom: 1px solid #e5e7eb;
+        .metadata-section h3 {
+            font-size: 1em;
+            color: #1f2937; /* Darker gray for headings */
+            margin-bottom: 0.5em;
         }
         
-        .tab-btn {
-            flex: 1;
-            padding: 0.8em;
-            border: none;
-            background: none;
-            cursor: pointer;
-            font-weight: 500;
-            color: #64748b;
-            transition: all 0.2s;
+        .metadata-section > div {
+            margin-bottom: 0.8em;
         }
-        
-        .tab-btn:hover {
-            background: #f1f5f9;
-        }
-        
-        .tab-btn.active {
+
+        .source-url a {
             color: #2563eb;
-            background: #fff;
-            border-bottom: 2px solid #2563eb;
+            text-decoration: none;
+        }
+        .source-url a:hover {
+            text-decoration: underline;
         }
         
-        .tab-content {
-            display: none;
-            padding: 1.2em;
+        /* Styles for cloze deletion cards */
+        .cloze {
+            font-weight: bold;
+            color: blue;
+        }
+        .nightMode .cloze {
+            color: lightblue;
         }
         
-        .tab-content.active {
-            display: block;
+        /* General utility */
+        hr {
+            border: none;
+            border-top: 1px dashed #cbd5e1; /* Light dashed line */
+            margin: 1.5em 0;
         }
         
+        /* Rich text field styling (if Anki adds classes for these) */
+        .field ul, .field ol {
+            margin-left: 1.5em;
+            padding-left: 0.5em;
+        }
+        .field li {
+            margin-bottom: 0.3em;
+        }
+
         /* Responsive design */
         @media (max-width: 640px) {
-            .tab-buttons {
-                flex-direction: column;
-            }
-            
-            .tab-btn {
-                width: 100%;
-                text-align: left;
-                padding: 0.6em;
-            }
-            
             .answer-section,
             .explanation-section,
             .example-section {
@@ -275,206 +299,741 @@ BASIC_MODEL = genanki.Model(
         .card {
             animation: fadeIn 0.3s ease-in-out;
         }
-        
-        .tab-content.active {
-            animation: fadeIn 0.2s ease-in-out;
-        }
     """,
+    # model_type=genanki.Model.BASIC, # This was still incorrect
+    # No model_type needed, defaults to Basic (0)
 )
 
-
-# Define the Cloze Model (based on Anki's default Cloze type)
 CLOZE_MODEL = genanki.Model(
-    random.randrange(1 << 30, 1 << 31),  # Needs a unique ID
-    "AnkiGen Cloze Enhanced",
-    model_type=genanki.Model.CLOZE,  # Specify model type as CLOZE
+    DEFAULT_CLOZE_MODEL_ID,  # Use the generated ID
+    ANKI_CLOZE_MODEL_NAME,  # Use the constant name
     fields=[
-        {"name": "Text"},  # Field for the text containing the cloze deletion
-        {"name": "Extra"},  # Field for additional info shown on the back
-        {"name": "Difficulty"},  # Keep metadata
-        {"name": "SourceTopic"},  # Add topic info
+        {"name": "Text"},
+        {"name": "Back Extra"},
+        {"name": "Explanation"},
+        {"name": "Example"},
+        {"name": "Prerequisites"},
+        {"name": "Learning_Outcomes"},
+        {"name": "Common_Misconceptions"},
+        {"name": "Difficulty"},
+        {"name": "SourceURL"},
+        {"name": "TagsStr"},
     ],
     templates=[
         {
             "name": "Cloze Card",
-            "qfmt": "{{cloze:Text}}",
+            "qfmt": """
+            <div class=\"card question-side\">
+                <div class=\"difficulty-indicator {{Difficulty}}\"></div>
+                <div class=\"content\">
+                    <div class=\"question\">{{cloze:Text}}</div>
+                    <div class=\"prerequisites\" onclick=\"event.stopPropagation();\">
+                        <div class=\"prerequisites-toggle\">Show Prerequisites</div>
+                        <div class=\"prerequisites-content\">{{Prerequisites}}</div>
+                    </div>
+                </div>
+            </div>
+            <script>
+                document.querySelector('.prerequisites-toggle').addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    this.parentElement.classList.toggle('show');
+                });
+            </script>
+            """,
             "afmt": """
-                {{cloze:Text}}
-                <hr>
-                <div class="extra-info">{{Extra}}</div>
-                <div class="metadata-footer">Difficulty: {{Difficulty}} | Topic: {{SourceTopic}}</div>
+            <div class=\"card answer-side\">
+                <div class=\"content\">
+                    <div class=\"question-section\">
+                        <div class=\"question\">{{cloze:Text}}</div>
+                        <div class=\"prerequisites\">
+                            <strong>Prerequisites:</strong> {{Prerequisites}}
+                        </div>
+                    </div>
+                    <hr>
+                    
+                    {{#Back Extra}}
+                    <div class=\"back-extra-section\">
+                        <h3>Additional Information</h3>
+                        <div class=\"back-extra-text\">{{Back Extra}}</div>
+                    </div>
+                    {{/Back Extra}}
+                    
+                    <div class=\"explanation-section\">
+                        <h3>Explanation</h3>
+                        <div class=\"explanation-text\">{{Explanation}}</div>
+                    </div>
+                    
+                    <div class=\"example-section\">
+                        <h3>Example</h3>
+                        <div class=\"example-text\">{{Example}}</div>
+                    </div>
+                    
+                    <div class=\"metadata-section\">
+                        <div class=\"learning-outcomes\">
+                            <h3>Learning Outcomes</h3>
+                            <div>{{Learning_Outcomes}}</div>
+                        </div>
+                        
+                        <div class=\"misconceptions\">
+                            <h3>Common Misconceptions - Debunked</h3>
+                            <div>{{Common_Misconceptions}}</div>
+                        </div>
+                        
+                        <div class=\"difficulty\">
+                            <h3>Difficulty Level</h3>
+                            <div>{{Difficulty}}</div>
+                        </div>
+                        {{#SourceURL}}<div class=\"source-url\"><small>Source: <a href=\"{{SourceURL}}\">{{SourceURL}}</a></small></div>{{/SourceURL}}
+                    </div>
+                </div>
+            </div>
             """,
         }
     ],
     css="""
+        /* Base styles */
         .card {
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
-            font-size: 16px; line-height: 1.6; color: #1a1a1a;
-            max-width: 800px; margin: 0 auto; padding: 20px;
+            font-size: 16px;
+            line-height: 1.6;
+            color: #1a1a1a;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
             background: #ffffff;
         }
-        .cloze {
-            font-weight: bold; color: #2563eb;
+        
+        @media (max-width: 768px) {
+            .card {
+                font-size: 14px;
+                padding: 15px;
+            }
         }
-        .extra-info {
-            margin-top: 1em; padding-top: 1em;
-            border-top: 1px solid #e5e7eb;
-            font-size: 0.95em; color: #333;
-            background: #f8fafc; padding: 1em; border-radius: 6px;
+        
+        /* Question side */
+        .question-side {
+            position: relative;
+            min-height: 200px;
         }
-        .extra-info h3 { margin-top: 0.5em; font-size: 1.1em; color: #1e293b; }
-        .extra-info pre code {
-            display: block; padding: 1em; background: #1e293b;
-            color: #e2e8f0; border-radius: 6px; overflow-x: auto;
-            font-family: 'Fira Code', 'Consolas', monospace; font-size: 0.9em;
+        
+        .difficulty-indicator {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+        
+        .difficulty-indicator.beginner { background: #4ade80; }
+        .difficulty-indicator.intermediate { background: #fbbf24; }
+        .difficulty-indicator.advanced { background: #ef4444; }
+        
+        .question {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: #2563eb;
+            margin-bottom: 1.5em;
+        }
+        
+        .prerequisites {
+            margin-top: 1em;
+            font-size: 0.9em;
+            color: #666;
+        }
+        
+        .prerequisites-toggle {
+            color: #2563eb;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+        
+        .prerequisites-content {
+            display: none;
             margin-top: 0.5em;
+            padding: 0.5em;
+            background: #f8fafc;
+            border-radius: 4px;
         }
-        .metadata-footer {
-            margin-top: 1.5em; font-size: 0.85em; color: #64748b; text-align: right;
+        
+        .prerequisites.show .prerequisites-content {
+            display: block;
+        }
+        
+        /* Answer side */
+        .answer-section,
+        .explanation-section,
+        .example-section {
+            margin: 1.5em 0;
+            padding: 1.2em;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .answer-section { /* Shared with question for cloze, but can be general */
+            background: #f0f9ff;
+            border-left: 4px solid #2563eb;
+        }
+
+        .back-extra-section {
+            background: #eef2ff; /* A slightly different shade for additional info */
+            border-left: 4px solid #818cf8; /* Indigo variant */
+            margin: 1.5em 0;
+            padding: 1.2em;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .explanation-section {
+            background: #f0fdf4;
+            border-left: 4px solid #4ade80;
+        }
+
+        .example-section {
+            background: #fefce8; /* Light yellow */
+            border-left: 4px solid #facc15; /* Yellow */
+        }
+        .example-section pre {
+            background-color: #2d2d2d; /* Darker background for code blocks */
+            color: #f8f8f2; /* Light text for contrast */
+            padding: 1em;
+            border-radius: 0.3em;
+            overflow-x: auto; /* Horizontal scroll for long lines */
+            font-family: 'Consolas', 'Monaco', 'Menlo', monospace;
+            font-size: 0.9em;
+            line-height: 1.4;
+        }
+
+        .example-section code {
+             font-family: 'Consolas', 'Monaco', 'Menlo', monospace;
+        }
+        
+        .metadata-section {
+            margin-top: 2em;
+            padding-top: 1em;
+            border-top: 1px solid #e5e7eb; /* Light gray border */
+            font-size: 0.9em;
+            color: #4b5563; /* Cool gray */
+        }
+        
+        .metadata-section h3 {
+            font-size: 1em;
+            color: #1f2937; /* Darker gray for headings */
+            margin-bottom: 0.5em;
+        }
+        
+        .metadata-section > div {
+            margin-bottom: 0.8em;
+        }
+
+        .source-url a {
+            color: #2563eb;
+            text-decoration: none;
+        }
+        .source-url a:hover {
+            text-decoration: underline;
+        }
+        
+        /* Styles for cloze deletion cards */
+        .cloze {
+            font-weight: bold;
+            color: blue;
+        }
+        .nightMode .cloze {
+            color: lightblue;
+        }
+        
+        /* General utility */
+        hr {
+            border: none;
+            border-top: 1px dashed #cbd5e1; /* Light dashed line */
+            margin: 1.5em 0;
+        }
+        
+        /* Rich text field styling (if Anki adds classes for these) */
+        .field ul, .field ol {
+            margin-left: 1.5em;
+            padding-left: 0.5em;
+        }
+        .field li {
+            margin-bottom: 0.3em;
         }
     """,
+    # model_type=genanki.Model.CLOZE, # This was still incorrect
+    model_type=1,  # Corrected to use integer 1 for Cloze
 )
 
 
-# --- Export Functions --- (Moved from app.py)
+# --- Helper functions for APKG (Subtask 10) ---
+def _get_or_create_model(
+    model_id: int,
+    name: str,
+    fields: List[Dict[str, str]],
+    templates: List[Dict[str, str]],
+) -> genanki.Model:
+    return genanki.Model(model_id, name, fields=fields, templates=templates)
 
 
-def export_csv(data: pd.DataFrame | None):
-    """Export the generated cards DataFrame as a CSV file string."""
-    if data is None or data.empty:
-        logger.warning("Attempted to export empty or None DataFrame to CSV.")
-        raise gr.Error("No card data available to export. Please generate cards first.")
+# --- New CSV Exporter for List of Dictionaries ---
 
-    # No minimum card check here, allow exporting even 1 card if generated.
+
+def export_cards_to_csv(
+    cards: List[Dict[str, Any]], filename: Optional[str] = None
+) -> str:
+    """Export a list of card dictionaries to a CSV file.
+
+    Args:
+        cards: A list of dictionaries, where each dictionary represents a card
+               and should contain 'front' and 'back' keys. Other keys like
+               'tags' and 'note_type' are optional.
+        filename: Optional. The desired filename/path for the CSV.
+                  If None, a timestamped filename will be generated.
+
+    Returns:
+        The path to the generated CSV file.
+
+    Raises:
+        IOError: If there is an issue writing to the file.
+        KeyError: If a card dictionary is missing essential keys like 'front' or 'back'.
+        ValueError: If the cards list is empty or not provided.
+    """
+    if not cards:
+        logger.warning("export_cards_to_csv called with an empty list of cards.")
+        raise ValueError("No cards provided to export.")
+
+    if not filename:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Ensure filename is just the name, not a path if not intended
+        # For simplicity, this example saves in the current working directory if no path is specified.
+        filename = f"ankigen_cards_{timestamp}.csv"
+        logger.info(f"No filename provided, generated: {filename}")
+
+    # Define the fieldnames expected in the CSV.
+    # 'front' and 'back' are mandatory.
+    fieldnames = ["front", "back", "tags", "note_type"]
 
     try:
-        logger.info(f"Exporting DataFrame with {len(data)} rows to CSV format.")
-        csv_string = data.to_csv(index=False)
-
-        # Save to a temporary file to return its path to Gradio
-        with tempfile.NamedTemporaryFile(
-            mode="w+", delete=False, suffix=".csv", encoding="utf-8"
-        ) as temp_file:
-            temp_file.write(csv_string)
-            csv_path = temp_file.name
-
-        logger.info(f"CSV data prepared and saved to temporary file: {csv_path}")
-        # Return the path for Gradio File component
-        return csv_path
-
-    except Exception as e:
-        logger.error(f"Failed to export data to CSV: {str(e)}", exc_info=True)
-        raise gr.Error(f"Failed to export to CSV: {str(e)}")
-
-
-def export_deck(data: pd.DataFrame | None, subject: str | None):
-    """Export the generated cards DataFrame as an Anki deck (.apkg file)."""
-    if data is None or data.empty:
-        logger.warning("Attempted to export empty or None DataFrame to Anki deck.")
-        raise gr.Error("No card data available to export. Please generate cards first.")
-
-    if not subject or not subject.strip():
-        logger.warning("Subject name is empty, using default deck name.")
-        deck_name = "AnkiGen Deck"
-    else:
-        deck_name = f"AnkiGen - {subject.strip()}"
-
-    # No minimum card check here.
-
-    try:
-        logger.info(f"Creating Anki deck '{deck_name}' with {len(data)} cards.")
-
-        deck_id = random.randrange(1 << 30, 1 << 31)
-        deck = genanki.Deck(deck_id, deck_name)
-
-        # Add models to the deck package
-        deck.add_model(BASIC_MODEL)
-        deck.add_model(CLOZE_MODEL)
-
-        records = data.to_dict("records")
-
-        for record in records:
-            # Ensure necessary keys exist, provide defaults if possible
-            card_type = str(record.get("Card_Type", "basic")).lower()
-            question = str(record.get("Question", ""))
-            answer = str(record.get("Answer", ""))
-            explanation = str(record.get("Explanation", ""))
-            example = str(record.get("Example", ""))
-            prerequisites = str(
-                record.get("Prerequisites", "[]")
-            )  # Convert list/None to str
-            learning_outcomes = str(record.get("Learning_Outcomes", "[]"))
-            common_misconceptions = str(record.get("Common_Misconceptions", "[]"))
-            difficulty = str(record.get("Difficulty", "N/A"))
-            topic = str(record.get("Topic", "Unknown Topic"))
-
-            if not question:
-                logger.warning(f"Skipping record due to empty Question field: {record}")
-                continue
-
-            note = None
-            if card_type == "cloze":
-                # For Cloze, the main text goes into the first field ("Text")
-                # All other details go into the second field ("Extra")
-                extra_content = f"""<h3>Answer/Context:</h3> <div>{answer}</div><hr>
-<h3>Explanation:</h3> <div>{explanation}</div><hr>
-<h3>Example:</h3> <pre><code>{example}</code></pre><hr>
-<h3>Prerequisites:</h3> <div>{prerequisites}</div><hr>
-<h3>Learning Outcomes:</h3> <div>{learning_outcomes}</div><hr>
-<h3>Common Misconceptions:</h3> <div>{common_misconceptions}</div>"""
+        logger.info(f"Attempting to export {len(cards)} cards to {filename}")
+        with open(filename, "w", newline="", encoding="utf-8") as csvfile:
+            writer = csv.DictWriter(
+                csvfile, fieldnames=fieldnames, extrasaction="ignore"
+            )
+            writer.writeheader()
+            for i, card in enumerate(cards):
                 try:
-                    note = genanki.Note(
-                        model=CLOZE_MODEL,
-                        fields=[question, extra_content, difficulty, topic],
-                    )
-                except Exception as e:
+                    # Ensure mandatory fields exist, others are optional via card.get in row_to_write
+                    if "front" not in card or "back" not in card:
+                        raise KeyError(
+                            f"Card at index {i} is missing 'front' or 'back' key."
+                        )
+
+                    row_to_write = {
+                        "front": card["front"],
+                        "back": card["back"],
+                        "tags": card.get("tags", ""),
+                        "note_type": card.get("note_type", "Basic"),
+                    }
+                    writer.writerow(row_to_write)
+                except KeyError as e_inner:
                     logger.error(
-                        f"Error creating Cloze note: {e}. Record: {record}",
-                        exc_info=True,
+                        f"Skipping card due to KeyError: {e_inner}. Card data: {card}"
                     )
-                    continue  # Skip this note
-
-            else:  # Default to basic card
-                try:
-                    note = genanki.Note(
-                        model=BASIC_MODEL,
-                        fields=[
-                            question,
-                            answer,
-                            explanation,
-                            example,
-                            prerequisites,
-                            learning_outcomes,
-                            common_misconceptions,
-                            difficulty,
-                        ],
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"Error creating Basic note: {e}. Record: {record}",
-                        exc_info=True,
-                    )
-                    continue  # Skip this note
-
-            if note:
-                deck.add_note(note)
-
-        if not deck.notes:
-            logger.warning("No valid notes were added to the deck. Export aborted.")
-            raise gr.Error("Failed to create any valid Anki notes from the data.")
-
-        # Create package in a temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".apkg") as temp_file:
-            apkg_path = temp_file.name
-            package = genanki.Package(deck)
-            package.write_to_file(apkg_path)
-
-        logger.info(
-            f"Anki deck '{deck_name}' created successfully at temporary path: {apkg_path}"
+                    # Optionally re-raise if one bad card should stop the whole export,
+                    # or continue to export valid cards.
+                    # For this implementation, we log and continue.
+                    continue
+        logger.info(f"Successfully exported cards to {filename}")
+        return filename
+    except IOError as e_io:
+        logger.error(f"IOError during CSV export to {filename}: {e_io}", exc_info=True)
+        raise  # Re-raise the IOError
+    except Exception as e_general:  # Catch any other unexpected errors
+        logger.error(
+            f"Unexpected error during CSV export to {filename}: {e_general}",
+            exc_info=True,
         )
-        # Return the path for Gradio File component
-        return apkg_path
+        raise
 
+
+def export_cards_to_apkg(
+    cards: List[Dict[str, Any]],
+    filename: Optional[str] = None,
+    deck_name: str = "Ankigen Generated Cards",
+) -> str:
+    """Exports a list of card dictionaries to an Anki .apkg file.
+
+    Args:
+        cards: List of dictionaries, where each dictionary represents a card.
+               It's expected that these dicts are prepared by export_dataframe_to_apkg
+               and contain keys like 'Question', 'Answer', 'Explanation', etc.
+        filename: The full path (including filename) for the exported file.
+                  If None, a default filename will be generated in the current directory.
+        deck_name: The name of the deck if exporting to .apkg format.
+
+    Returns:
+        The path to the exported file.
+    """
+    logger.info(f"Starting APKG export for {len(cards)} cards to deck '{deck_name}'.")
+    if not filename:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"ankigen_deck_{timestamp}.apkg"
+    elif not filename.lower().endswith(".apkg"):
+        filename += ".apkg"
+
+    output_dir = os.path.dirname(filename)
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+        logger.info(f"Created output directory for APKG: {output_dir}")
+
+    anki_basic_model = BASIC_MODEL
+    anki_cloze_model = CLOZE_MODEL
+
+    deck_id = random.randrange(1 << 30, 1 << 31)
+    anki_deck = genanki.Deck(deck_id, deck_name)
+
+    notes_added_count = 0
+    for card_dict in cards:
+        note_type = card_dict.get("note_type", "Basic")
+        tags_for_note_object = card_dict.get("tags_for_note_object", [])
+
+        # Extract all potential fields, defaulting to empty strings
+        question = card_dict.get("Question", "")
+        answer = card_dict.get("Answer", "")
+        explanation = card_dict.get("Explanation", "")
+        example = card_dict.get("Example", "")
+        prerequisites = card_dict.get("Prerequisites", "")
+        learning_outcomes = card_dict.get("Learning_Outcomes", "")
+        common_misconceptions = card_dict.get("Common_Misconceptions", "")
+        difficulty = card_dict.get("Difficulty", "")
+        source_url = card_dict.get("SourceURL", "")
+        tags_str_field = card_dict.get(
+            "TagsStr", ""
+        )  # This is the string for the model's TagsStr field
+
+        # The 'Question' field from card_dict is used as the main text for both basic and cloze.
+        # For cloze, this 'Question' field should contain the cloze-formatted text (e.g., "The capital of {{c1::France}} is Paris.")
+        if not question:
+            logger.error(
+                f"SKIPPING CARD DUE TO EMPTY 'Question' (front/text) field. Card data: {card_dict}"
+            )
+            continue
+
+        try:
+            if note_type.lower() == "cloze":
+                # CLOZE_MODEL fields: Text, Back Extra, Explanation, Example, Prerequisites,
+                # Learning_Outcomes, Common_Misconceptions, Difficulty, SourceURL, TagsStr
+                note_fields = [
+                    question,  # Text (this is the card_dict['Question'] which should be cloze-formatted)
+                    answer,  # Back Extra (this is card_dict['Answer'])
+                    explanation,
+                    example,
+                    prerequisites,
+                    learning_outcomes,
+                    common_misconceptions,
+                    difficulty,
+                    source_url,
+                    tags_str_field,
+                ]
+                note = genanki.Note(
+                    model=anki_cloze_model,
+                    fields=note_fields,
+                    tags=tags_for_note_object,
+                )
+            else:  # Basic
+                # BASIC_MODEL fields: Question, Answer, Explanation, Example, Prerequisites,
+                # Learning_Outcomes, Common_Misconceptions, Difficulty, SourceURL, TagsStr
+                note_fields = [
+                    question,
+                    answer,
+                    explanation,
+                    example,
+                    prerequisites,
+                    learning_outcomes,
+                    common_misconceptions,
+                    difficulty,
+                    source_url,
+                    tags_str_field,
+                ]
+                note = genanki.Note(
+                    model=anki_basic_model,
+                    fields=note_fields,
+                    tags=tags_for_note_object,
+                )
+            anki_deck.add_note(note)
+            notes_added_count += 1
+        except Exception as e:
+            logger.error(
+                f"Failed to create genanki.Note for card: {card_dict}. Error: {e}",
+                exc_info=True,
+            )
+            logger.warning(f"Skipping card due to error: Question='{question[:50]}...'")
+
+    if notes_added_count == 0 and cards:  # Some cards were provided but none were added
+        logger.error(  # Changed to error for more visibility
+            "No valid notes could be created from the provided cards. APKG generation aborted."
+        )
+        # This error should be caught by the calling function in app.py to inform the user
+        raise gr.Error("Failed to create any valid Anki notes from the input.")
+    elif not cards:  # No cards provided initially
+        logger.info("No cards provided to export to APKG. APKG generation skipped.")
+        # Depending on desired behavior, could raise or return a specific status/filename
+        # For now, let's assume an empty/default filename or None indicates no action if no cards
+        # However, the function is typed to return str, so raising is more consistent if no file is made.
+        raise gr.Error("No cards were provided to generate an APKG file.")
+    else:  # notes_added_count > 0
+        logger.info(
+            f"Added {notes_added_count} notes to deck '{deck_name}'. Proceeding to package."
+        )
+
+    # Only proceed to package and write if notes were successfully added
+    package = genanki.Package(anki_deck)
+    try:
+        package.write_to_file(filename)
+        logger.info(f"Successfully exported Anki deck to {filename}")
     except Exception as e:
-        logger.error(f"Failed to export Anki deck: {str(e)}", exc_info=True)
-        raise gr.Error(f"Failed to export Anki deck: {str(e)}")
+        logger.error(f"Failed to write .apkg file to {filename}: {e}", exc_info=True)
+        raise IOError(f"Could not write .apkg file: {e}")
+
+    return filename
+
+
+def export_cards_from_crawled_content(
+    cards: List[Dict[str, Any]],
+    output_path: Optional[
+        str
+    ] = None,  # Changed from filename to output_path for clarity
+    export_format: str = "csv",  # Added export_format parameter
+    deck_name: str = "Ankigen Generated Cards",
+) -> str:
+    """Exports cards (list of dicts) to the specified format (CSV or APKG).
+
+    Args:
+        cards: List of dictionaries, where each dictionary represents a card.
+               Expected keys: 'front', 'back'. Optional: 'tags' (space-separated string), 'source_url', 'note_type' ('Basic' or 'Cloze').
+        output_path: The full path (including filename) for the exported file.
+                     If None, a default filename will be generated in the current directory.
+        export_format: The desired format, either 'csv' or 'apkg'.
+        deck_name: The name of the deck if exporting to .apkg format.
+
+    Returns:
+        The path to the exported file.
+    """
+    if not cards:
+        logger.warning("No cards provided to export_cards_from_crawled_content.")
+        # MODIFIED: Raise error immediately if no cards, as per test expectation
+        raise ValueError("No cards provided to export.")
+
+    logger.info(
+        f"Exporting {len(cards)} cards to format '{export_format}' with deck name '{deck_name}'."
+    )
+
+    if export_format.lower() == "csv":
+        return export_cards_to_csv(cards, filename=output_path)
+    elif export_format.lower() == "apkg":
+        return export_cards_to_apkg(cards, filename=output_path, deck_name=deck_name)
+    else:
+        supported_formats = ["csv", "apkg"]
+        logger.error(
+            f"Unsupported export format: {export_format}. Supported formats: {supported_formats}"
+        )
+        # MODIFIED: Updated error message to include supported formats
+        raise ValueError(
+            f"Unsupported export format: {export_format}. Supported formats: {supported_formats}"
+        )
+
+
+# --- New DataFrame CSV Exporter (Subtask 11) ---
+def export_dataframe_to_csv(
+    data: Optional[pd.DataFrame],
+    filename_suggestion: Optional[str] = "ankigen_cards.csv",
+) -> Optional[str]:
+    """Exports a Pandas DataFrame to a CSV file, designed for Gradio download.
+
+    Args:
+        data: The Pandas DataFrame to export.
+        filename_suggestion: A suggestion for the base filename (e.g., from subject).
+
+    Returns:
+        The path to the temporary CSV file, or None if an error occurs or data is empty.
+    """
+    logger.info(
+        f"Attempting to export DataFrame to CSV. Suggested filename: {filename_suggestion}"
+    )
+    if data is None or data.empty:
+        logger.warning(
+            "No data provided to export_dataframe_to_csv. Skipping CSV export."
+        )
+        raise gr.Error(
+            "No card data available"
+        )  # Notify user via Gradio with Error instead of Info
+        # return None # This line is now unreachable due to the raise
+
+    try:
+        # Create a specific filename using both suggestion and timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_name_from_suggestion = "ankigen_cards"  # Default base part
+
+        # Sanitize and use the suggestion (e.g., subject name) if provided
+        if filename_suggestion and isinstance(filename_suggestion, str):
+            # Remove .csv if present, then sanitize
+            processed_suggestion = filename_suggestion.removesuffix(".csv")
+            safe_suggestion = (
+                processed_suggestion.replace(" ", "_")
+                .replace("/", "-")
+                .replace("\\\\", "-")
+            )
+            if (
+                safe_suggestion
+            ):  # If suggestion wasn't just '.csv' or empty after processing
+                base_name_from_suggestion = f"ankigen_{safe_suggestion[:50]}"
+            # If suggestion was empty or only '.csv', default base_name_from_suggestion remains 'ankigen_cards'
+
+        final_filename = f"{base_name_from_suggestion}_{timestamp}.csv"
+
+        # Ensure output directory exists if filename contains path
+        output_dir = os.path.dirname(final_filename)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            logger.info(f"Created output directory for CSV: {output_dir}")
+
+        data.to_csv(final_filename, index=False)  # MODIFIED: Write to final_filename
+        logger.info(f"Successfully exported DataFrame to CSV: {final_filename}")
+        gr.Info(
+            f"CSV ready for download: {os.path.basename(final_filename)}"
+        )  # User-friendly message
+        return final_filename  # MODIFIED: Return final_filename
+    except Exception as e:
+        logger.error(f"Error exporting DataFrame to CSV: {e}", exc_info=True)
+        gr.Error(f"Error exporting DataFrame to CSV: {e}")
+        return None
+
+
+# --- New DataFrame to APKG Exporter (for Main Generator Tab) ---
+def export_dataframe_to_apkg(
+    df: pd.DataFrame,
+    output_path: Optional[str],
+    deck_name: str,
+) -> str:
+    """Exports a DataFrame of cards to an Anki .apkg file."""
+    if df.empty:
+        logger.warning("export_dataframe_to_apkg called with an empty DataFrame.")
+        raise ValueError("No cards in DataFrame to export.")
+
+    logger.info(
+        f"Starting APKG export for DataFrame with {len(df)} rows to deck '{deck_name}'. Output: {output_path}"
+    )
+
+    cards_for_apkg: List[Dict[str, Any]] = []
+    for _, row in df.iterrows():
+        try:
+            note_type_val = (
+                _format_field_as_string(row.get("Card_Type", "Basic")) or "Basic"
+            )
+            topic = _format_field_as_string(row.get("Topic", ""))
+            difficulty_raw = _format_field_as_string(row.get("Difficulty", ""))
+            difficulty_plain_for_tag = strip_html_tags(
+                difficulty_raw
+            )  # Strip HTML for the tag
+
+            tags_list_for_note_obj = []  # For genanki.Note(tags=...)
+            if topic:
+                tags_list_for_note_obj.append(topic.replace(" ", "_").replace(",", "_"))
+            if difficulty_plain_for_tag:  # Use the plain text version for the tag
+                # Further sanitize for Anki tags: replace spaces with underscores, remove other invalid chars if any.
+                # Anki tags also often don't like colons or other special chars except underscore/hyphen.
+                # For now, just replacing space, as that's the error seen.
+                safe_difficulty_tag = difficulty_plain_for_tag.replace(" ", "_")
+                tags_list_for_note_obj.append(safe_difficulty_tag)
+
+            tags_str_for_field = " ".join(
+                tags_list_for_note_obj
+            )  # For the 'TagsStr' model field
+
+            # Prepare a dictionary that contains all possible fields our models might need.
+            card_data_for_note = {
+                "note_type": note_type_val,
+                "tags_for_note_object": tags_list_for_note_obj,
+                "TagsStr": tags_str_for_field,
+                "Question": _format_field_as_string(row.get("Question", "")),
+                "Answer": _format_field_as_string(row.get("Answer", "")),
+                "Explanation": _format_field_as_string(row.get("Explanation", "")),
+                "Example": _format_field_as_string(row.get("Example", "")),
+                "Prerequisites": _format_field_as_string(row.get("Prerequisites", "")),
+                "Learning_Outcomes": _format_field_as_string(
+                    row.get("Learning_Outcomes", "")
+                ),
+                "Common_Misconceptions": _format_field_as_string(
+                    row.get("Common_Misconceptions", "")
+                ),
+                "Difficulty": difficulty_raw,  # Keep the original HTML for the 'Difficulty' field itself
+                "SourceURL": _format_field_as_string(row.get("Source_URL", "")),
+            }
+            cards_for_apkg.append(card_data_for_note)
+        except Exception as e:
+            logger.error(
+                f"Error processing DataFrame row for APKG: {row}. Error: {e}",
+                exc_info=True,
+            )
+            continue
+
+    if not cards_for_apkg:
+        logger.error("No cards could be processed from DataFrame for APKG export.")
+        raise ValueError("No processable cards found in DataFrame for APKG export.")
+
+    return export_cards_to_apkg(
+        cards_for_apkg, filename=output_path, deck_name=deck_name
+    )
+
+
+# --- Compatibility Exports for Tests and Legacy Code ---
+# These aliases ensure that tests expecting these names will find them.
+
+# Export functions under expected names
+export_csv = (
+    export_dataframe_to_csv  # Update this to export_dataframe_to_csv for compatibility
+)
+
+
+# MODIFIED: export_deck is now a wrapper to provide a default deck_name
+def export_deck(
+    df: pd.DataFrame,
+    output_path: Optional[str] = None,
+    deck_name: str = "Ankigen Generated Cards",
+) -> str:
+    """Alias for exporting a DataFrame to APKG, providing a default deck name."""
+    if df is None or df.empty:
+        logger.warning("export_deck called with None or empty DataFrame.")
+        # Match the error type and message expected by tests
+        raise gr.Error("No card data available")
+
+    # Original logic to call export_dataframe_to_apkg
+    # Ensure all necessary parameters for export_dataframe_to_apkg are correctly passed.
+    # The export_dataframe_to_apkg function itself will handle its specific error conditions.
+    # The 'output_path' for export_dataframe_to_apkg needs to be handled.
+    # If 'output_path' is None here, export_cards_to_apkg (called by export_dataframe_to_apkg)
+    # will generate a default filename.
+
+    # If output_path is not provided to export_deck, it's None.
+    # export_dataframe_to_apkg expects output_path: Optional[str].
+    # And export_cards_to_apkg (which it calls) also handles Optional[str] filename.
+    # So, passing output_path directly should be fine.
+
+    return export_dataframe_to_apkg(df, output_path=output_path, deck_name=deck_name)
+
+
+export_dataframe_csv = export_dataframe_to_csv
+export_dataframe_apkg = export_dataframe_to_apkg
+
+__all__ = [
+    "BASIC_MODEL",
+    "CLOZE_MODEL",
+    "export_csv",
+    "export_deck",
+    "export_dataframe_csv",
+    "export_dataframe_apkg",
+    "export_cards_to_csv",
+    "export_cards_to_apkg",
+    "export_cards_from_crawled_content",
+    "export_dataframe_to_csv",
+    "export_dataframe_to_apkg",
+]

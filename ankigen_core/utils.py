@@ -8,6 +8,8 @@ import requests
 from bs4 import BeautifulSoup
 from functools import lru_cache
 from typing import Any, Optional
+import time
+import re
 
 # --- Logging Setup ---
 _logger_instance = None
@@ -164,3 +166,41 @@ def fetch_webpage_text(url: str) -> str:
             raise RuntimeError(
                 f"An unexpected error occurred while processing the URL: {e}"
             )
+
+
+# --- New Synchronous RateLimiter Class ---
+class RateLimiter:
+    """A simple synchronous rate limiter."""
+
+    def __init__(self, requests_per_second: float):
+        if requests_per_second <= 0:
+            raise ValueError("Requests per second must be positive.")
+        self.min_interval_seconds: float = 1.0 / requests_per_second
+        self.last_request_timestamp: float = 0.0
+        # Use a lock if this were to be used by multiple threads, but for now assuming single thread access per instance
+
+    def wait(self):
+        """Blocks until it's safe to make the next request."""
+        current_time = time.monotonic()  # Use monotonic clock for intervals
+        time_since_last_request = current_time - self.last_request_timestamp
+
+        if time_since_last_request < self.min_interval_seconds:
+            wait_duration = self.min_interval_seconds - time_since_last_request
+            # logger.debug(f"RateLimiter waiting for {wait_duration:.3f} seconds.") # Optional: add logging
+            time.sleep(wait_duration)
+
+        self.last_request_timestamp = time.monotonic()
+
+
+# --- Existing Utility Functions (if any) ---
+# def some_other_util_function():
+#     pass
+
+HTML_TAG_REGEX = re.compile(r"<[^>]+>")
+
+
+def strip_html_tags(text: str) -> str:
+    """Removes HTML tags from a string."""
+    if not isinstance(text, str):
+        return str(text)  # Ensure it's a string, or return as is if not coercible
+    return HTML_TAG_REGEX.sub("", text).strip()

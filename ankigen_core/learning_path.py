@@ -7,13 +7,14 @@ from openai import OpenAIError  # For specific error handling
 # Imports from our core modules
 from ankigen_core.utils import get_logger, ResponseCache
 from ankigen_core.llm_interface import OpenAIClientManager, structured_output_completion
+
 # Assuming no specific models needed here unless prompts change
-# from ankigen_core.models import ...
+# from ankigen_core.models import LearningPathSubject # REMOVED LearningPathSubject import
 
 logger = get_logger()
 
 
-def analyze_learning_path(
+async def analyze_learning_path(
     client_manager: OpenAIClientManager,  # Expect the manager
     cache: ResponseCache,  # Expect the cache instance
     # --- UI Inputs ---
@@ -33,7 +34,7 @@ def analyze_learning_path(
 
     try:
         # Ensure client is initialized (using the passed manager)
-        client_manager.initialize_client(api_key)
+        await client_manager.initialize_client(api_key)
         openai_client = client_manager.get_client()
     except (ValueError, RuntimeError, OpenAIError, Exception) as e:
         logger.error(f"Client initialization failed in learning path analysis: {e}")
@@ -73,7 +74,7 @@ def analyze_learning_path(
     # --- API Call ---
     try:
         logger.debug("Calling LLM for learning path analysis...")
-        response = structured_output_completion(
+        response = await structured_output_completion(
             openai_client=openai_client,
             model=model,
             response_format={"type": "json_object"},

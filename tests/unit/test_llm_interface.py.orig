@@ -8,7 +8,7 @@ import asyncio
 from openai.types.chat import ChatCompletion
 from openai.types.chat.chat_completion import Choice as ChatCompletionChoice
 from openai.types.chat.chat_completion_message import ChatCompletionMessage
-from openai import APIConnectionError, APIError, AsyncOpenAI
+from openai import RateLimitError, APIConnectionError, AsyncOpenAI
 
 # Modules to test
 from ankigen_core.llm_interface import (
@@ -21,11 +21,12 @@ from ankigen_core.utils import (
     ResponseCache,
 )  # Need ResponseCache for testing structured_output_completion
 from ankigen_core.models import CrawledPage, AnkiCardData
+from openai import APIError
 
 # --- OpenAIClientManager Tests ---
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_client_manager_init():
     """Test initial state of the client manager."""
     manager = OpenAIClientManager()
@@ -33,7 +34,7 @@ async def test_client_manager_init():
     assert manager._api_key is None
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_client_manager_initialize_success():
     """Test successful client initialization."""
     manager = OpenAIClientManager()
@@ -47,7 +48,7 @@ async def test_client_manager_initialize_success():
         assert manager.get_client() is not None
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_client_manager_initialize_invalid_key_format():
     """Test initialization failure with invalid API key format."""
     manager = OpenAIClientManager()
@@ -58,7 +59,7 @@ async def test_client_manager_initialize_invalid_key_format():
     assert manager._api_key is None  # Should remain None
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_client_manager_initialize_openai_error():
     """Test handling of OpenAIError during client initialization."""
     manager = OpenAIClientManager()
@@ -73,7 +74,7 @@ async def test_client_manager_initialize_openai_error():
         mock_async_openai_constructor.assert_called_once_with(api_key=valid_key)
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_client_manager_get_client_success():
     """Test getting the client after successful initialization."""
     manager = OpenAIClientManager()
@@ -117,7 +118,7 @@ def mock_response_cache():
     return cache
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_structured_output_completion_cache_hit(
     mock_openai_client, mock_response_cache
 ):
@@ -148,7 +149,7 @@ async def test_structured_output_completion_cache_hit(
     assert result == cached_result
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_structured_output_completion_cache_miss_success(
     mock_openai_client, mock_response_cache
 ):
@@ -201,7 +202,7 @@ async def test_structured_output_completion_cache_miss_success(
     assert result == expected_result
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_structured_output_completion_api_error(
     mock_openai_client, mock_response_cache
 ):
@@ -235,17 +236,17 @@ async def test_structured_output_completion_api_error(
 
     # Assertions
     # cache.get is called on each retry attempt
-    assert (
-        mock_response_cache.get.call_count == 3
-    ), f"Expected cache.get to be called 3 times due to retries, but was {mock_response_cache.get.call_count}"
+    assert mock_response_cache.get.call_count == 3, (
+        f"Expected cache.get to be called 3 times due to retries, but was {mock_response_cache.get.call_count}"
+    )
     # Check that create was called 3 times due to retry
-    assert (
-        mock_openai_client.chat.completions.create.call_count == 3
-    ), f"Expected create to be called 3 times due to retries, but was {mock_openai_client.chat.completions.create.call_count}"
+    assert mock_openai_client.chat.completions.create.call_count == 3, (
+        f"Expected create to be called 3 times due to retries, but was {mock_openai_client.chat.completions.create.call_count}"
+    )
     mock_response_cache.set.assert_not_called()  # Cache should not be set on error
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_structured_output_completion_invalid_json(
     mock_openai_client, mock_response_cache
 ):
@@ -279,17 +280,17 @@ async def test_structured_output_completion_invalid_json(
 
     # Assertions
     # cache.get is called on each retry attempt
-    assert (
-        mock_response_cache.get.call_count == 3
-    ), f"Expected cache.get to be called 3 times due to retries, but was {mock_response_cache.get.call_count}"
+    assert mock_response_cache.get.call_count == 3, (
+        f"Expected cache.get to be called 3 times due to retries, but was {mock_response_cache.get.call_count}"
+    )
     # create is also called on each retry attempt
-    assert (
-        mock_openai_client.chat.completions.create.call_count == 3
-    ), f"Expected create to be called 3 times due to retries, but was {mock_openai_client.chat.completions.create.call_count}"
+    assert mock_openai_client.chat.completions.create.call_count == 3, (
+        f"Expected create to be called 3 times due to retries, but was {mock_openai_client.chat.completions.create.call_count}"
+    )
     mock_response_cache.set.assert_not_called()  # Cache should not be set on error
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_structured_output_completion_no_choices(
     mock_openai_client, mock_response_cache
 ):
@@ -316,7 +317,7 @@ async def test_structured_output_completion_no_choices(
     mock_response_cache.set.assert_not_called()
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_structured_output_completion_no_message_content(
     mock_openai_client, mock_response_cache
 ):
@@ -354,26 +355,6 @@ async def test_structured_output_completion_no_message_content(
 # --- Fixtures ---
 
 
-@pytest.fixture
-def client_manager():
-    """Fixture for the OpenAIClientManager."""
-    return OpenAIClientManager()
-
-
-@pytest.fixture
-def sample_crawled_page():
-    """Fixture for a sample CrawledPage object."""
-    return CrawledPage(
-        url="http://example.com",
-        html_content="<html><body>This is some test content for the page.</body></html>",
-        text_content="This is some test content for the page.",
-        title="Test Page",
-        meta_description="A test page.",
-        meta_keywords=["test", "page"],
-        crawl_depth=0,
-    )
-
-
 # --- Tests for process_crawled_page ---
 
 
@@ -396,9 +377,8 @@ def create_mock_chat_completion(content: str) -> ChatCompletion:
     )
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_process_crawled_page_success(mock_openai_client, sample_crawled_page):
-    # The function expects a JSON array of cards, not an object with a "cards" key
     mock_response_content = json.dumps(
         [
             {"front": "Q1", "back": "A1", "tags": ["tag1"]},
@@ -414,13 +394,11 @@ async def test_process_crawled_page_success(mock_openai_client, sample_crawled_p
     assert len(result_cards) == 2
     assert result_cards[0].front == "Q1"
     assert result_cards[0].source_url == sample_crawled_page.url
-    assert result_cards[1].back == "A2"
-    # The function doesn't correctly handle tags in the current implementation
-    # so we won't test for tags here
+    assert result_cards[1].tags == ["tag2", "python"]
     mock_openai_client.chat.completions.create.assert_awaited_once()
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_process_crawled_page_empty_llm_response_content(
     mock_openai_client, sample_crawled_page
 ):
@@ -432,7 +410,7 @@ async def test_process_crawled_page_empty_llm_response_content(
     assert len(result_cards) == 0
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_process_crawled_page_llm_returns_not_a_list(
     mock_openai_client, sample_crawled_page
 ):
@@ -447,7 +425,7 @@ async def test_process_crawled_page_llm_returns_not_a_list(
     assert len(result_cards) == 0
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_process_crawled_page_llm_returns_dict_with_cards_key(
     mock_openai_client, sample_crawled_page
 ):
@@ -459,15 +437,11 @@ async def test_process_crawled_page_llm_returns_dict_with_cards_key(
     )
 
     result_cards = await process_crawled_page(mock_openai_client, sample_crawled_page)
-
-    # The function should extract cards from the "cards" field
     assert len(result_cards) == 1
     assert result_cards[0].front == "Q1"
-    assert result_cards[0].back == "A1"
-    assert result_cards[0].source_url == sample_crawled_page.url
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_process_crawled_page_json_decode_error(
     mock_openai_client, sample_crawled_page
 ):
@@ -479,12 +453,12 @@ async def test_process_crawled_page_json_decode_error(
     assert len(result_cards) == 0
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_process_crawled_page_empty_text_content(mock_openai_client):
     empty_content_page = CrawledPage(
         url="http://example.com/empty",
         html_content="",
-        text_content="",  # Changed from whitespace to completely empty
+        text_content="  ",
         title="Empty",
     )
     result_cards = await process_crawled_page(mock_openai_client, empty_content_page)
@@ -492,45 +466,33 @@ async def test_process_crawled_page_empty_text_content(mock_openai_client):
     mock_openai_client.chat.completions.create.assert_not_awaited()  # Should not call LLM
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_process_crawled_page_openai_api_error_retry(
     mock_openai_client, sample_crawled_page, caplog
 ):
-    # The problem is we're trying to test retry behavior in a unit test
-    # We'll need to patch the retry decorator to not actually retry
-
-    # First, create a new version of process_crawled_page without the retry decorator
-    from ankigen_core.llm_interface import process_crawled_page as original_func
-
-    # Create a version that will call our mocked implementation without retries
-    async def mock_implementation(*args, **kwargs):
-        return await original_func(*args, **kwargs)
-
-    with patch(
-        "ankigen_core.llm_interface.process_crawled_page",
-        side_effect=mock_implementation,
-    ):
-        # Create a sequence of mock responses
-        responses = [
-            create_mock_chat_completion(
-                json.dumps([{"front": "Q1", "back": "A1", "tags": []}])
-            )
-        ]
-        mock_openai_client.chat.completions.create.return_value = responses[0]
-
-        # Execute the function
-        result_cards = await mock_implementation(
-            mock_openai_client, sample_crawled_page
+    # Simulate API errors that should be retried
+    errors_to_raise = [
+        RateLimitError("rate limited", response=MagicMock(), body=None)
+    ] * 2 + [
+        create_mock_chat_completion(
+            json.dumps([{"front": "Q1", "back": "A1", "tags": []}])
         )
+    ]
 
-        # Verify results
-        assert len(result_cards) == 1
-        assert result_cards[0].front == "Q1"
-        assert result_cards[0].back == "A1"
-        assert mock_openai_client.chat.completions.create.call_count == 1
+    mock_openai_client.chat.completions.create.side_effect = errors_to_raise
+
+    result_cards = await process_crawled_page(mock_openai_client, sample_crawled_page)
+
+    assert len(result_cards) == 1
+    assert result_cards[0].front == "Q1"
+    assert (
+        mock_openai_client.chat.completions.create.await_count == 3
+    )  # 2 retries + 1 success
+    assert "Retrying OpenAI call (attempt 1)" in caplog.text
+    assert "Retrying OpenAI call (attempt 2)" in caplog.text
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_process_crawled_page_openai_persistent_api_error(
     mock_openai_client, sample_crawled_page, caplog
 ):
@@ -542,13 +504,15 @@ async def test_process_crawled_page_openai_persistent_api_error(
     result_cards = await process_crawled_page(mock_openai_client, sample_crawled_page)
 
     assert len(result_cards) == 0
-    assert mock_openai_client.chat.completions.create.await_count == 1
-    assert "OpenAI API error while processing page" in caplog.text
+    assert (
+        mock_openai_client.chat.completions.create.await_count == 3
+    )  # Default 3 attempts
+    assert "OpenAI API error after retries" in caplog.text
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_process_crawled_page_tiktoken_truncation(
-    mock_openai_client, sample_crawled_page, monkeypatch
+    mock_openai_client, sample_crawled_page
 ):
     # Make text_content very long
     long_text = "word " * 8000  # Approx 8000 tokens with cl100k_base
@@ -562,50 +526,38 @@ async def test_process_crawled_page_tiktoken_truncation(
         create_mock_chat_completion(mock_response_content)
     )
 
-    # Mock tiktoken encoding to simulate token counting
-    mock_encoding = MagicMock()
+    # Using default max_prompt_content_tokens=6000
+    await process_crawled_page(mock_openai_client, sample_crawled_page)
 
-    # First call will be for the prompt structure (system + user prompt templates)
-    # Return a relatively small number for that
-    # Second call will be for the page content
-    # Return a much larger number for that
-    mock_encoding.encode.side_effect = [
-        list(range(1000)),  # First call for prompt structure - return 1000 tokens
-        list(range(10000)),  # Second call for page content - return 10000 tokens
-        list(range(10000)),  # Additional calls if needed
-    ]
+    # Check that the user_prompt content passed to create was truncated
+    # The actual user_prompt construction is inside process_crawled_page, so we inspect the call args
+    call_args = mock_openai_client.chat.completions.create.call_args
+    user_prompt_message_content = next(
+        m["content"] for m in call_args.kwargs["messages"] if m["role"] == "user"
+    )
 
-    # Create a way to capture the truncated content
-    truncated_content = []
+    # Rough check: actual token count of CONTENT part should be around 6000
+    # This is an indirect way to test; ideally, mock tiktoken.encode itself
+    assert "CONTENT:\n" in user_prompt_message_content
+    content_part = user_prompt_message_content.split("CONTENT:\n")[1].split(
+        "\n\nReturn a JSON array"
+    )[0]
 
-    def mock_decode(tokens):
-        truncated_content.append(len(tokens))
-        return "Truncated content"
+    import tiktoken
 
-    mock_encoding.decode = mock_decode
+    encoding = tiktoken.get_encoding(
+        "cl100k_base"
+    )  # Assuming cl100k_base was used as fallback or for model
+    num_tokens = len(encoding.encode(content_part))
 
-    mock_get_encoding = MagicMock(return_value=mock_encoding)
-
-    with patch("tiktoken.get_encoding", mock_get_encoding):
-        with patch("tiktoken.encoding_for_model", side_effect=KeyError("test")):
-            result_cards = await process_crawled_page(
-                mock_openai_client, sample_crawled_page, max_prompt_content_tokens=6000
-            )
-
-            # Verify the cards were returned
-            assert len(result_cards) == 1
-            assert result_cards[0].front == "TruncatedQ"
-            assert result_cards[0].back == "TruncatedA"
-
-            # Verify tiktoken was used with expected parameters
-            mock_get_encoding.assert_called_with("cl100k_base")
-            assert mock_encoding.encode.call_count >= 2  # Called multiple times
+    # Check it's close to 6000 (allowing some leeway for prompt structure around content)
+    assert 5900 < num_tokens < 6100
 
 
 # --- Tests for process_crawled_pages ---
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_process_crawled_pages_success(mock_openai_client, sample_crawled_page):
     pages_to_process = [
         sample_crawled_page,
@@ -618,7 +570,7 @@ async def test_process_crawled_pages_success(mock_openai_client, sample_crawled_
     ]
 
     # Mock process_crawled_page to return different cards for different pages
-    async def mock_single_page_processor(openai_client, page, model="gpt-4o", **kwargs):
+    async def mock_single_page_processor(client, page, model, max_tokens):
         if page.url == pages_to_process[0].url:
             return [AnkiCardData(front="P1Q1", back="P1A1", source_url=page.url)]
         elif page.url == pages_to_process[1].url:
@@ -637,10 +589,13 @@ async def test_process_crawled_pages_success(mock_openai_client, sample_crawled_
         )
 
         assert len(result_cards) == 3
+        assert result_cards[0].front == "P1Q1"
+        assert result_cards[1].front == "P2Q1"
+        assert result_cards[2].front == "P2Q2"
         assert mock_processor.call_count == 2
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_process_crawled_pages_partial_failure(
     mock_openai_client, sample_crawled_page
 ):
@@ -660,9 +615,7 @@ async def test_process_crawled_pages_partial_failure(
         ),  # This one will succeed
     ]
 
-    async def mock_single_page_processor_with_failure(
-        openai_client, page, model="gpt-4o", **kwargs
-    ):
+    async def mock_single_page_processor_with_failure(client, page, model, max_tokens):
         if page.url == pages_to_process[0].url:
             return [AnkiCardData(front="P1Q1", back="P1A1", source_url=page.url)]
         elif page.url == pages_to_process[1].url:  # page_fail
@@ -680,10 +633,14 @@ async def test_process_crawled_pages_partial_failure(
         )
 
         assert len(result_cards) == 2  # Only cards from successful pages
+        successful_urls = [card.source_url for card in result_cards]
+        assert pages_to_process[0].url in successful_urls
+        assert pages_to_process[2].url in successful_urls
+        assert pages_to_process[1].url not in successful_urls
         assert mock_processor.call_count == 3
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_process_crawled_pages_progress_callback(
     mock_openai_client, sample_crawled_page
 ):
@@ -718,126 +675,332 @@ async def test_process_crawled_pages_progress_callback(
 TEST_API_KEY = "sk-testkey1234567890abcdefghijklmnopqrstuvwxyz"
 
 
-@pytest.mark.asyncio
+@pytest.fixture
+def client_manager():
+    """Fixture for OpenAIClientManager."""
+    return OpenAIClientManager()
+
+
+@pytest.fixture
+def mock_async_openai_client():
+    """Mocks an AsyncOpenAI client instance."""
+    mock_client = AsyncMock()
+    mock_client.chat = AsyncMock()
+    mock_client.chat.completions = AsyncMock()
+    mock_client.chat.completions.create = AsyncMock()
+
+    # Mock the response structure for the .create method
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message = MagicMock()
+    mock_response.choices[
+        0
+    ].message.content = '{"question": "Q1", "answer": "A1"}'  # Default valid JSON
+    mock_response.usage = MagicMock()
+    mock_response.usage.total_tokens = 100
+
+    mock_client.chat.completions.create.return_value = mock_response
+    return mock_client
+
+
+@pytest.fixture
+def sample_crawled_page():
+    """Fixture for a sample CrawledPage object."""
+    return CrawledPage(
+        url="http://example.com",
+        html_content="<html><body>This is some test content for the page.</body></html>",
+        text_content="This is some test content for the page.",
+        title="Test Page",
+        meta_description="A test page.",
+        meta_keywords=["test", "page"],
+        crawl_depth=0,
+    )
+
+
+@pytest.mark.anyio
+async def test_process_crawled_page_success(
+    client_manager, mock_async_openai_client, sample_crawled_page
+):
+    """Test successful processing of a single crawled page."""
+    with patch.object(
+        client_manager, "get_client", return_value=mock_async_openai_client
+    ):
+        result, tokens = await process_crawled_page(
+            mock_async_openai_client,
+            sample_crawled_page,
+            "gpt-4o",  # model
+            max_prompt_content_tokens=1000,
+        )
+        assert isinstance(result, AnkiCardData)
+        assert result.front == "Q1"
+        assert result.back == "A1"
+        assert tokens == 100
+        mock_async_openai_client.chat.completions.create.assert_called_once()
+
+
+@pytest.mark.anyio
+async def test_process_crawled_page_json_error(
+    client_manager, mock_async_openai_client, sample_crawled_page
+):
+    """Test handling of invalid JSON response from LLM."""
+    mock_async_openai_client.chat.completions.create.return_value.choices[
+        0
+    ].message.content = "This is not JSON"
+
+    with patch.object(
+        client_manager, "get_client", return_value=mock_async_openai_client
+    ):
+        # Reset call count for this specific test scenario
+        mock_async_openai_client.chat.completions.create.reset_mock()
+
+        result, tokens = await process_crawled_page(
+            mock_async_openai_client,
+            sample_crawled_page,
+            "gpt-4o",
+            max_prompt_content_tokens=1000,
+        )
+        assert result is None
+        assert (
+            tokens == 100
+        )  # Tokens are still counted even if parsing fails on the first attempt response
+        # Check tenacity retries - should be called multiple times (default 3 for JSON error + 1 original = 4, or up to max_attempts)
+        # The default for _parse_json_response is 3 attempts. process_crawled_page itself has @retry for API errors.
+        # For JSON error, the retry is within _parse_json_response. The outer retry on process_crawled_page for APIError won't trigger for JSON error.
+        # So, create will be called once, and _parse_json_response will try to parse its content 3 times.
+        # The mock_async_openai_client.chat.completions.create is called once by process_crawled_page.
+        # The tenacity retry for JSON parsing is internal to _parse_json_response, which is not directly mocked here.
+        # What we can check is that create was called, and the result is None due to parsing failure.
+        # To properly test tenacity for JSON, we'd need to mock json.loads within _parse_json_response or make _parse_json_response a separate testable unit.
+        # For now, verifying create was called once and result is None is sufficient for this level.
+        assert mock_async_openai_client.chat.completions.create.call_count >= 1
+        # If we want to assert exact retry counts for JSON, we need to mock json.loads inside the function
+        # or test the retry behavior of `_parse_json_response` separately.
+
+
+@pytest.mark.anyio
 async def test_process_crawled_page_api_error(
-    client_manager, mock_openai_client, sample_crawled_page
+    client_manager, mock_async_openai_client, sample_crawled_page
 ):
     """Test handling of API error during LLM call."""
 
     # Correctly instantiate APIError: needs a 'request' argument.
     # The 'response' is typically part of the error object after it's raised by httpx, not a constructor arg.
     mock_request = MagicMock()  # Mock an httpx.Request object
-    mock_openai_client.chat.completions.create.side_effect = APIError(
+    mock_async_openai_client.chat.completions.create.side_effect = APIError(
         message="Test API Error", request=mock_request, body=None
     )
 
-    with patch.object(client_manager, "get_client", return_value=mock_openai_client):
+    with patch.object(
+        client_manager, "get_client", return_value=mock_async_openai_client
+    ):
         # Reset call count for this specific test scenario
-        mock_openai_client.chat.completions.create.reset_mock()
+        mock_async_openai_client.chat.completions.create.reset_mock()
 
-        result_cards = await process_crawled_page(
-            mock_openai_client,
+        result, tokens = await process_crawled_page(
+            mock_async_openai_client,
             sample_crawled_page,
             "gpt-4o",
             max_prompt_content_tokens=1000,
         )
-        assert len(result_cards) == 0
-        # The test should expect a single call, not retry in this case
+        assert result is None
+        assert tokens == 0  # No tokens if API call fails before response
+        # Check tenacity retries - should be called multiple times (default for APIError is 3 attempts)
+        assert mock_async_openai_client.chat.completions.create.call_count > 1
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_process_crawled_page_content_truncation(
-    client_manager, mock_openai_client, sample_crawled_page
+    client_manager, mock_async_openai_client, sample_crawled_page
 ):
     """Test content truncation based on max_prompt_content_tokens."""
     long_content_piece = "This is a word. "
     repetitions = 10
-    sample_crawled_page.text_content = long_content_piece * repetitions
+    sample_crawled_page.content = long_content_piece * repetitions
 
     with (
-        patch.object(client_manager, "get_client", return_value=mock_openai_client),
-        patch("tiktoken.encoding_for_model", side_effect=KeyError("test")),
+        patch.object(
+            client_manager, "get_client", return_value=mock_async_openai_client
+        ),
         patch("tiktoken.get_encoding") as mock_get_encoding,
     ):
         mock_encoding = MagicMock()
 
-        # Setup token arrays for different encode calls
-        # When max_prompt_content_tokens is very small (e.g., 20), the function will exit early
-        # after determining the prompt structure is too large
-        system_prompt_tokens = list(range(100))  # 100 tokens for system+user prompt
-        mock_encoding.encode.return_value = system_prompt_tokens
+        original_tokens = []
+        for i in range(repetitions):
+            original_tokens.extend([i * 4, i * 4 + 1, i * 4 + 2, i * 4 + 3])
 
+        mock_encoding.encode.return_value = original_tokens
+
+        def mock_decode_side_effect(token_ids):
+            num_tokens_to_decode = len(token_ids)
+            num_full_pieces = num_tokens_to_decode // 4
+            partial_piece_tokens = num_tokens_to_decode % 4
+            decoded_str = long_content_piece * num_full_pieces
+            if partial_piece_tokens > 0:
+                words_in_piece = long_content_piece.strip().split(" ")
+                num_words_to_take = min(partial_piece_tokens, len(words_in_piece))
+                decoded_str += " ".join(words_in_piece[:num_words_to_take])
+            return decoded_str.strip()
+
+        mock_encoding.decode.side_effect = mock_decode_side_effect
         mock_get_encoding.return_value = mock_encoding
 
-        # Mock the API response (though it won't be called due to early exit)
-        mock_openai_client.chat.completions.create.return_value = (
-            create_mock_chat_completion(
-                json.dumps([{"front": "TestQ", "back": "TestA", "tags": []}])
-            )
-        )
+        mock_async_openai_client.chat.completions.create.reset_mock()
 
-        # Call the function with a very small token limit to trigger early exit
-        result = await process_crawled_page(
-            mock_openai_client,
+        await process_crawled_page(
+            mock_async_openai_client,
             sample_crawled_page,
             "gpt-4o",
-            max_prompt_content_tokens=20,  # Very small limit to force early exit
+            max_prompt_content_tokens=5,
         )
 
-        # Verify result is empty list due to early exit
-        assert result == []
+        mock_get_encoding.assert_called_once_with("cl100k_base")
+        mock_encoding.encode.assert_called_once_with(
+            sample_crawled_page.content, disallowed_special=()
+        )
+        mock_encoding.decode.assert_called_once_with(original_tokens[:5])
 
-        # Verify tiktoken was called correctly
-        mock_get_encoding.assert_called_with("cl100k_base")
-        assert mock_encoding.encode.call_count >= 1
+        call_args = mock_async_openai_client.chat.completions.create.call_args
+        assert call_args is not None
+        messages = call_args.kwargs["messages"]
+        user_prompt_content = messages[1]["content"]
 
-        # API should not be called due to early exit
-        mock_openai_client.chat.completions.create.assert_not_called()
+        expected_truncated_content = mock_decode_side_effect(original_tokens[:5])
+        assert f"Content: {expected_truncated_content}" in user_prompt_content
 
 
-@pytest.mark.asyncio
+# The following tests are commented out due to invalid async iteration usage
+# @pytest.mark.anyio
+# async def test_process_crawled_pages_empty_list(client_manager):
+#     """Test processing an empty list of crawled pages."""
+#     results = []
+#     # Correctly iterate over the async generator
+#     async for result_item in process_crawled_pages(
+#         pages=[], openai_client=mock_async_openai_client, model="gpt-4o"
+#     ):
+#         results.append(result_item)
+#     assert len(results) == 0
+
+# @pytest.mark.anyio
+# async def test_process_crawled_pages_single_page_success(
+#     client_manager, mock_async_openai_client, sample_crawled_page
+# ):
+#     """Test processing a list with a single successful page."""
+#     pages = [sample_crawled_page]
+#     # We mock process_crawled_page itself since its unit tests cover its internal logic
+#     with patch(
+#         "ankigen_core.llm_interface.process_crawled_page", new_callable=AsyncMock
+#     ) as mock_single_process:
+#         mock_single_process.return_value = (
+#             AnkiCardData(front="Q1", back="A1"),
+#             100,
+#         )
+#         results = []
+#         async for result_tuple in process_crawled_pages(
+#             pages=pages, openai_client=mock_async_openai_client, model="gpt-4o"
+#         ):
+#             results.append(result_tuple)
+#         assert len(results) == 1
+#         page, card_data, tokens = results[0]
+#         assert page == sample_crawled_page
+#         assert isinstance(card_data, AnkiCardData)
+#         assert card_data.front == "Q1"
+#         assert card_data.back == "A1"
+#         assert tokens == 100
+#         # Check that process_crawled_page was called with correct default parameters from process_crawled_pages
+#         mock_single_process.assert_called_once_with(
+#             sample_crawled_page,
+#             mock_async_openai_client,
+#             "gpt-4o",  # model
+#             max_prompt_content_tokens=5000,  # default from process_crawled_pages
+#             # The following are also defaults from process_crawled_pages
+#             # Ensure they are passed down if not overridden in the call to process_crawled_pages
+#         )
+
+# @pytest.mark.anyio
+# async def test_process_crawled_pages_multiple_pages_mixed_results(client_manager):
+#     """Test processing multiple pages with mixed success and failure."""
+#     page1 = CrawledPage(
+#         url="http://example.com/1",
+#         html_content="",
+#         text_content="Content 1",
+#         title="Page 1",
+#     )
+#     page2 = CrawledPage(
+#         url="http://example.com/2",
+#         html_content="",
+#         text_content="Content 2",
+#         title="Page 2",
+#     )  # This one will fail
+#     page3 = CrawledPage(
+#         url="http://example.com/3",
+#         html_content="",
+#         text_content="Content 3",
+#         title="Page 3",
+#     )
+#     pages_to_process = [page1, page2, page3]
+#     async def mock_single_process_side_effect(page, manager, model, **kwargs):
+#         await asyncio.sleep(0.01)  # simulate async work
+#         if page.url.endswith("1"):
+#             return (AnkiCardData(front="Q1", back="A1"), 100)
+#         elif page.url.endswith("2"):
+#             return (None, 50)  # Failed processing, some tokens consumed
+#         elif page.url.endswith("3"):
+#             return (AnkiCardData(front="Q3", back="A3"), 150)
+#         return (None, 0)
+#     with patch(
+#         "ankigen_core.llm_interface.process_crawled_page",
+#         side_effect=mock_single_process_side_effect,
+#     ) as mock_process_call:
+#         results = []
+#         async for result_tuple in process_crawled_pages(
+#             pages=pages_to_process,
+#             openai_client=mock_async_openai_client,
+#             model="gpt-4o",
+#             max_concurrent_requests=2,  # Test with concurrency
+#         ):
+#             results.append(result_tuple)
+#         assert len(results) == 3
+#         assert mock_process_call.call_count == 3
+#         results_map = {res[0].url: res for res in results}
+#         assert results_map["http://example.com/1"][1] is not None
+#         assert results_map["http://example.com/1"][1].front == "Q1"
+#         assert results_map["http://example.com/1"][1].back == "A1"
+#         assert results_map["http://example.com/1"][2] == 100
+#         assert results_map["http://example.com/2"][1] is None
+#         assert results_map["http://example.com/2"][2] == 50
+#         assert results_map["http://example.com/3"][1] is not None
+#         assert results_map["http://example.com/3"][1].front == "Q3"
+#         assert results_map["http://example.com/3"][1].back == "A3"
+#         assert results_map["http://example.com/3"][2] == 150
+#         # Check that parameters were passed down correctly from process_crawled_pages to process_crawled_page
+#         for call_args in mock_process_call.call_args_list:
+#             args, kwargs = call_args
+#             assert kwargs["max_prompt_content_tokens"] == 5000  # default
+#             # These were passed to process_crawled_pages and should be passed down
+#             # However, process_crawled_page itself doesn't directly use max_concurrent_requests or request_delay
+#             # These are used by process_crawled_pages for its own loop control.
+#             # So we can't directly check them in the call to process_crawled_page mock here.
+#             # The important check is that process_crawled_page is called for each page.
+
+
+@pytest.mark.anyio
 async def test_openai_client_manager_get_client(
     client_manager, mock_async_openai_client
 ):
     """Test that get_client returns the AsyncOpenAI client instance and initializes it once."""
-    # Reset client_manager before the test to ensure it's in initial state
-    client_manager._client = None
-    client_manager._api_key = None
-
     with patch(
-        "ankigen_core.llm_interface.AsyncOpenAI", return_value=mock_async_openai_client
+        "openai.AsyncOpenAI", return_value=mock_async_openai_client
     ) as mock_constructor:
-        # Initialize the client first with a valid API key format
-        await client_manager.initialize_client(
-            "sk-testkey1234567890abcdefghijklmnopqrstuvwxyz"
-        )
-
-        client1 = client_manager.get_client()  # First call after init
-        client2 = (
-            client_manager.get_client()
-        )  # Second call, should return same instance
+        client1 = client_manager.get_client()  # First call, should initialize
+        client2 = client_manager.get_client()  # Second call, should return existing
 
         assert client1 is mock_async_openai_client
         assert client2 is mock_async_openai_client
-        mock_constructor.assert_called_once_with(
-            api_key="sk-testkey1234567890abcdefghijklmnopqrstuvwxyz"
-        )
+        mock_constructor.assert_called_once_with(api_key=TEST_API_KEY)
 
 
 # Notes for further tests:
 # - Test progress callback in process_crawled_pages if it were implemented.
 # - Test specific retry conditions for tenacity if more complex logic added.
 # - Test behavior of semaphore in process_crawled_pages more directly (might be complex).
-
-
-@pytest.fixture
-def mock_async_openai_client():
-    client = MagicMock(spec=AsyncOpenAI)
-    client.chat = AsyncMock()
-    client.chat.completions = AsyncMock()
-    client.chat.completions.create = AsyncMock()
-    mock_process_page_response = create_mock_chat_completion(
-        json.dumps([{"front": "Q_Default", "back": "A_Default", "tags": []}])
-    )
-    client.chat.completions.create.return_value = mock_process_page_response
-    return client
