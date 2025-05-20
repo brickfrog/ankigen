@@ -121,6 +121,12 @@ This project uses `uv` for environment and package management and `pytest` for t
     - UI layout and event wiring are in `app.py`.
     - Add or update tests in the `tests/` directory for any new or modified functionality.
 
+## TODO
+
+- [ ] Edit columns /fields
+- [ ] Improve crawler / RAG(?)
+- [ ] Chain of thought / reasoning, recurse for better questions
+
 ## License
 
 BSD 2-Clause License
