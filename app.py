@@ -295,6 +295,10 @@ def create_ankigen_interface():
                                 label="Generate Cloze Cards (Experimental)",
                                 value=False,
                             )
+                            llm_judge_checkbox = gr.Checkbox(
+                                label="Use LLM Judge",
+                                value=False,
+                            )
 
             generate_button = gr.Button("Generate Cards", variant="primary")
 
@@ -490,6 +494,7 @@ def create_ankigen_interface():
                 cards_per_topic_val,
                 preference_prompt_val,
                 generate_cloze_checkbox_val,
+                llm_judge_checkbox_val,
                 progress=gr.Progress(track_tqdm=True),  # Added progress tracker
             ):
                 # Recreate the partial function call, but now it can be awaited
@@ -509,6 +514,7 @@ def create_ankigen_interface():
                     cards_per_topic_val,
                     preference_prompt_val,
                     generate_cloze_checkbox_val,
+                    llm_judge_checkbox_val,
                 )
 
             generate_button.click(
@@ -524,6 +530,7 @@ def create_ankigen_interface():
                     cards_per_topic,
                     preference_prompt,
                     generate_cloze_checkbox,
+                    llm_judge_checkbox,
                 ],
                 outputs=[output, total_cards_html],
                 show_progress="full",
