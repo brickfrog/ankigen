@@ -176,6 +176,50 @@ async def generate_cards_batch(
         raise  # Re-raise for the main function to handle
 
 
+async def judge_card(
+    openai_client,
+    cache: ResponseCache,
+    model: str,
+    card: Card,
+) -> bool:
+    """Use an LLM to validate a single card."""
+    system_prompt = (
+        "You review flashcards and decide if the question is clear and useful. "
+        'Respond with a JSON object like {"is_valid": true}.'
+    )
+    user_prompt = f"Question: {card.front.question}\nAnswer: {card.back.answer}"
+    try:
+        result = await structured_output_completion(
+            openai_client=openai_client,
+            model=model,
+            response_format={"type": "json_object"},
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            cache=cache,
+        )
+        if isinstance(result, dict):
+            return bool(result.get("is_valid", True))
+    except Exception as e:  # pragma: no cover - network or parse errors
+        logger.warning(f"LLM judge failed for card '{card.front.question}': {e}")
+    return True
+
+
+async def judge_cards(
+    openai_client,
+    cache: ResponseCache,
+    model: str,
+    cards: List[Card],
+) -> List[Card]:
+    """Filter cards using the LLM judge."""
+    validated: List[Card] = []
+    for card in cards:
+        if await judge_card(openai_client, cache, model, card):
+            validated.append(card)
+        else:
+            logger.info(f"Card rejected by judge: {card.front.question}")
+    return validated
+
+
 async def orchestrate_card_generation(  # MODIFIED: Added async
     client_manager: OpenAIClientManager,  # Expect the manager
     cache: ResponseCache,  # Expect the cache instance
@@ -190,6 +234,7 @@ async def orchestrate_card_generation(  # MODIFIED: Added async
     cards_per_topic: int,
     preference_prompt: str,
     generate_cloze: bool,
+    use_llm_judge: bool = False,
 ):
     """Orchestrates the card generation process based on UI inputs."""
 
@@ -490,6 +535,10 @@ async def orchestrate_card_generation(  # MODIFIED: Added async
                         "structured_output_completion returned None, defaulting to empty card list for text mode."
                     )
                 processed_cards = process_raw_cards_data(raw_cards)
+                if use_llm_judge and processed_cards:
+                    processed_cards = await judge_cards(
+                        openai_client, cache, model, processed_cards
+                    )
                 formatted_cards = format_cards_for_dataframe(
                     processed_cards, topic_name=source_text_display_name, start_index=1
                 )
@@ -529,7 +578,9 @@ async def orchestrate_card_generation(  # MODIFIED: Added async
         # progress_total_batches = len(topics_for_generation)
         # current_batch_num = 0
 
-        for topic_info in (
+        for (
+            topic_info
+        ) in (
             topics_for_generation
         ):  # This loop will be skipped if text_mode populated flattened_data directly
             # current_batch_num += 1
@@ -551,6 +602,10 @@ async def orchestrate_card_generation(  # MODIFIED: Added async
                     system_prompt,  # System prompt defined above based on mode
                     generate_cloze,
                 )
+                if use_llm_judge and batch_cards:
+                    batch_cards = await judge_cards(
+                        openai_client, cache, model, batch_cards
+                    )
                 # Assign topic name to cards before formatting for DataFrame
                 formatted_batch = format_cards_for_dataframe(
                     batch_cards,
@@ -758,9 +813,11 @@ def format_cards_for_dataframe(
         difficulty_str = strip_html_tags(str(difficulty))
 
         formatted_card = {
-            "Index": f"{topic_index}.{actual_index}"
-            if topic_index > 0
-            else str(actual_index),
+            "Index": (
+                f"{topic_index}.{actual_index}"
+                if topic_index > 0
+                else str(actual_index)
+            ),
             "Topic": strip_html_tags(topic_name),  # Ensure topic is also plain
             "Card_Type": strip_html_tags(card_type),
             "Question": question,  # Already stripped during Card object creation

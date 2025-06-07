@@ -203,6 +203,7 @@ def base_orchestrator_args(api_key="valid_key", **kwargs):
         "cards_per_topic": 5,  # Corresponds to num_cards in generate_cards_batch
         "preference_prompt": "Pref prompt",  # Corresponds to system_prompt
         "generate_cloze": False,
+        "use_llm_judge": False,
     }
     base_args.update(kwargs)  # Update with any provided kwargs
     return base_args
@@ -274,6 +275,41 @@ async def test_orchestrate_subject_mode(
     # </div>
     # '''
     # assert status.strip() == expected_html_status.strip()
+
+
+@patch("ankigen_core.card_generator.judge_cards")
+@patch("ankigen_core.card_generator.structured_output_completion")
+@patch("ankigen_core.card_generator.generate_cards_batch")
+async def test_orchestrate_subject_mode_with_judge(
+    mock_gcb,
+    mock_soc,
+    mock_judge,
+    mock_client_manager_fixture,
+    mock_response_cache_fixture,
+):
+    """Test orchestrate_card_generation calls judge_cards when enabled."""
+    manager, client = mock_client_manager_fixture
+    cache = mock_response_cache_fixture
+    args = base_orchestrator_args(generation_mode="subject", use_llm_judge=True)
+
+    mock_soc.return_value = {
+        "topics": [{"name": "T1", "difficulty": "d", "description": "d"}]
+    }
+    sample_card = Card(
+        front=CardFront(question="Q1"),
+        back=CardBack(answer="A1", explanation="E1", example="Ex1"),
+    )
+    mock_gcb.return_value = [sample_card]
+    mock_judge.return_value = [sample_card]
+
+    with patch("gradio.Info"), patch("gradio.Warning"):
+        await card_generator.orchestrate_card_generation(
+            client_manager=manager,
+            cache=cache,
+            **args,
+        )
+
+    mock_judge.assert_called_once_with(client, cache, args["model_name"], [sample_card])
 
 
 @patch("ankigen_core.card_generator.structured_output_completion")

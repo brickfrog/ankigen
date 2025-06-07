@@ -393,6 +393,7 @@ def get_orchestrator_mock_inputs(generation_mode="subject", api_key="sk-test"):
         "cards_per_topic": 3,  # For subject mode / text mode / web mode
         "preference_prompt": "Test preferences",
         "generate_cloze": False,
+        "use_llm_judge": False,
     }
 
 
