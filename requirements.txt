@@ -58,6 +58,6 @@ typer==0.15.2
 typing-extensions==4.13.2
 typing-inspection==0.4.0
 tzdata==2025.2
-urllib3==2.4.0
+urllib3==2.5.0
 uvicorn==0.34.1
 websockets==12.0
