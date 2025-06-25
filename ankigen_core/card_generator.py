@@ -578,9 +578,7 @@ async def orchestrate_card_generation(  # MODIFIED: Added async
         # progress_total_batches = len(topics_for_generation)
         # current_batch_num = 0
 
-        for (
-            topic_info
-        ) in (
+        for topic_info in (
             topics_for_generation
         ):  # This loop will be skipped if text_mode populated flattened_data directly
             # current_batch_num += 1
