@@ -824,14 +824,30 @@ if __name__ == "__main__":
     try:
         ankigen_interface = create_ankigen_interface()
         logger.info("Launching AnkiGen Gradio interface...")
+        # Configure queue with explicit SSE settings for Gradio 5.x compatibility
+        ankigen_interface.queue(default_concurrency_limit=10, max_size=100)
+
         # Ensure favicon.ico is in the same directory as app.py or provide correct path
         favicon_path = Path(__file__).parent / "favicon.ico"
         if favicon_path.exists():
-            ankigen_interface.launch(share=False, favicon_path=str(favicon_path))
+            ankigen_interface.launch(
+                share=False,
+                favicon_path=str(favicon_path),
+                server_name="0.0.0.0",
+                server_port=7860,
+                max_threads=40,
+                show_error=True,
+            )
         else:
             logger.warning(
                 f"Favicon not found at {favicon_path}, launching without it."
             )
-            ankigen_interface.launch(share=False)
+            ankigen_interface.launch(
+                share=False,
+                server_name="0.0.0.0",
+                server_port=7860,
+                max_threads=40,
+                show_error=True,
+            )
     except Exception as e:
         logger.critical(f"Failed to launch Gradio interface: {e}", exc_info=True)
