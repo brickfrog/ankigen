@@ -35,6 +35,14 @@ from ankigen_core.models import (
     # TextCardRequest, # Removed
     # LearningPathRequest, # Removed
 )
+
+# Import agent system for web crawling
+try:
+    from ankigen_core.agents.integration import AgentOrchestrator
+    from ankigen_core.agents.feature_flags import get_feature_flags
+    AGENTS_AVAILABLE_UI = True
+except ImportError:
+    AGENTS_AVAILABLE_UI = False
 # --- End moved imports ---
 
 # Get an instance of the logger for this module
@@ -535,6 +543,63 @@ async def crawl_and_generate(
                 [],
             )
 
+        # --- AGENT SYSTEM INTEGRATION FOR WEB CRAWLING ---
+        if AGENTS_AVAILABLE_UI:
+            feature_flags = get_feature_flags()
+            if feature_flags.should_use_agents():
+                crawler_ui_logger.info("🤖 Using agent system for web crawling card generation")
+                try:
+                    # Initialize agent orchestrator
+                    orchestrator = AgentOrchestrator(client_manager)
+                    await orchestrator.initialize("dummy-key")  # Key already in client_manager
+                    
+                    # Combine all crawled content into a single context
+                    combined_content = "\n\n--- PAGE BREAK ---\n\n".join([
+                        f"URL: {page.url}\nTitle: {page.title}\nContent: {page.text_content[:2000]}..."
+                        for page in crawled_pages[:10]  # Limit to first 10 pages to avoid token limits
+                    ])
+                    
+                    context = {
+                        "source_text": combined_content,
+                        "crawl_source": url,
+                        "pages_crawled": len(crawled_pages)
+                    }
+                    
+                    progress(0.6, desc="🤖 Processing with agent system...")
+                    
+                    # Generate cards with agents
+                    agent_cards, agent_metadata = await orchestrator.generate_cards_with_agents(
+                        topic=f"Content from {url}",
+                        subject="web_content",
+                        num_cards=min(len(crawled_pages) * 3, 50),  # 3 cards per page, max 50
+                        difficulty="intermediate",
+                        enable_quality_pipeline=True,
+                        context=context
+                    )
+                    
+                    if agent_cards:
+                        progress(0.9, desc=f"🤖 Agent system generated {len(agent_cards)} cards")
+                        
+                        cards_for_dataframe_export = generate_cards_from_crawled_content(agent_cards)
+                        
+                        final_message = f"🤖 Agent system processed content from {len(crawled_pages)} pages. Generated {len(agent_cards)} high-quality cards."
+                        progress(1.0, desc=final_message)
+                        
+                        return (
+                            final_message,
+                            cards_for_dataframe_export,
+                            agent_cards,
+                        )
+                    else:
+                        crawler_ui_logger.warning("Agent system returned no cards for web content, falling back to legacy")
+                        progress(0.5, desc="🔄 Agent system returned no cards, using legacy processing...")
+                        
+                except Exception as e:
+                    crawler_ui_logger.error(f"Agent system failed for web crawling: {e}, falling back to legacy")
+                    progress(0.5, desc=f"🔄 Agent error: {str(e)}, using legacy processing...")
+
+        # --- LEGACY WEB PROCESSING ---
+        crawler_ui_logger.info("Using legacy LLM processing for web content")
         openai_client = client_manager.get_client()
         processed_llm_pages = 0
 

@@ -37,6 +37,15 @@ logger = get_logger()
 response_cache = ResponseCache()  # Initialize cache
 client_manager = OpenAIClientManager()  # Initialize client manager
 
+# Check agent system availability
+try:
+    from ankigen_core.agents.feature_flags import get_feature_flags
+    AGENTS_AVAILABLE_APP = True
+    logger.info("Agent system is available")
+except ImportError:
+    AGENTS_AVAILABLE_APP = False
+    logger.info("Agent system not available, using legacy generation only")
+
 js_storage = """
 async () => {
     const loadDecks = () => {
@@ -178,6 +187,25 @@ def create_ankigen_interface():
         with gr.Column(elem_classes="contain"):
             gr.Markdown("# 📚 AnkiGen - Advanced Anki Card Generator")
             gr.Markdown("#### Generate comprehensive Anki flashcards using AI.")
+            
+            # Agent system status indicator
+            if AGENTS_AVAILABLE_APP:
+                try:
+                    feature_flags = get_feature_flags()
+                    if feature_flags.should_use_agents():
+                        agent_status_emoji = "🤖"
+                        agent_status_text = "**Agent System Active** - Enhanced quality with multi-agent pipeline"
+                    else:
+                        agent_status_emoji = "🔧"
+                        agent_status_text = "**Legacy Mode** - Set `ANKIGEN_AGENT_MODE=agent_only` to enable agents"
+                except:
+                    agent_status_emoji = "⚙️"
+                    agent_status_text = "**Agent System Available** - Configure environment variables to activate"
+            else:
+                agent_status_emoji = "💡"
+                agent_status_text = "**Legacy Mode** - Agent system not installed"
+            
+            gr.Markdown(f"{agent_status_emoji} {agent_status_text}")
 
             with gr.Accordion("Configuration Settings", open=True):
                 with gr.Row():
