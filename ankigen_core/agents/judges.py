@@ -2,7 +2,7 @@
 
 import json
 import asyncio
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Tuple
 from datetime import datetime
 
 from openai import AsyncOpenAI
@@ -16,7 +16,7 @@ from .metrics import record_agent_execution
 
 class JudgeDecision:
     """Represents a judge's decision on a card"""
-    
+
     def __init__(
         self,
         approved: bool,
@@ -24,7 +24,7 @@ class JudgeDecision:
         feedback: str,
         improvements: List[str] = None,
         judge_name: str = "",
-        metadata: Dict[str, Any] = None
+        metadata: Dict[str, Any] = None,
     ):
         self.approved = approved
         self.score = score  # 0.0 to 1.0
@@ -36,11 +36,11 @@ class JudgeDecision:
 
 class ContentAccuracyJudge(BaseAgentWrapper):
     """Judge for factual accuracy and content correctness"""
-    
+
     def __init__(self, openai_client: AsyncOpenAI):
         config_manager = get_config_manager()
         base_config = config_manager.get_agent_config("content_accuracy_judge")
-        
+
         if not base_config:
             base_config = AgentConfig(
                 name="content_accuracy_judge",
@@ -48,23 +48,25 @@ class ContentAccuracyJudge(BaseAgentWrapper):
 Verify the correctness and accuracy of flashcard content, checking for factual errors,
 misconceptions, and ensuring consistency with authoritative sources.""",
                 model="gpt-4o",
-                temperature=0.3
+                temperature=0.3,
             )
-        
+
         super().__init__(base_config, openai_client)
-    
+
     async def judge_card(self, card: Card) -> JudgeDecision:
         """Judge a single card for content accuracy"""
         start_time = datetime.now()
-        
+
         try:
             user_input = self._build_judgment_prompt(card)
             response = await self.execute(user_input)
-            
+
             # Parse the response
-            decision_data = json.loads(response) if isinstance(response, str) else response
+            decision_data = (
+                json.loads(response) if isinstance(response, str) else response
+            )
             decision = self._parse_decision(decision_data)
-            
+
             # Record successful execution
             record_agent_execution(
                 agent_name=self.config.name,
@@ -74,30 +76,30 @@ misconceptions, and ensuring consistency with authoritative sources.""",
                 metadata={
                     "cards_judged": 1,
                     "approved": 1 if decision.approved else 0,
-                    "score": decision.score
-                }
+                    "score": decision.score,
+                },
             )
-            
+
             return decision
-            
+
         except Exception as e:
             record_agent_execution(
                 agent_name=self.config.name,
                 start_time=start_time,
                 end_time=datetime.now(),
                 success=False,
-                error_message=str(e)
+                error_message=str(e),
             )
-            
+
             logger.error(f"ContentAccuracyJudge failed: {e}")
             # Return default approval to avoid blocking workflow
             return JudgeDecision(
                 approved=True,
                 score=0.5,
                 feedback=f"Judgment failed: {str(e)}",
-                judge_name=self.config.name
+                judge_name=self.config.name,
             )
-    
+
     def _build_judgment_prompt(self, card: Card) -> str:
         """Build the judgment prompt for content accuracy"""
         return f"""Evaluate this flashcard for factual accuracy and content correctness:
@@ -128,7 +130,7 @@ Return your assessment as JSON:
     "confidence": 0.0-1.0,
     "detailed_feedback": "Comprehensive assessment of content accuracy"
 }}"""
-    
+
     def _parse_decision(self, decision_data: Dict[str, Any]) -> JudgeDecision:
         """Parse the judge response into a JudgeDecision"""
         return JudgeDecision(
@@ -141,18 +143,18 @@ Return your assessment as JSON:
                 "factual_errors": decision_data.get("factual_errors", []),
                 "terminology_issues": decision_data.get("terminology_issues", []),
                 "misconceptions": decision_data.get("misconceptions", []),
-                "confidence": decision_data.get("confidence", 0.5)
-            }
+                "confidence": decision_data.get("confidence", 0.5),
+            },
         )
 
 
 class PedagogicalJudge(BaseAgentWrapper):
     """Judge for educational effectiveness and pedagogical principles"""
-    
+
     def __init__(self, openai_client: AsyncOpenAI):
         config_manager = get_config_manager()
         base_config = config_manager.get_agent_config("pedagogical_judge")
-        
+
         if not base_config:
             base_config = AgentConfig(
                 name="pedagogical_judge",
@@ -160,22 +162,24 @@ class PedagogicalJudge(BaseAgentWrapper):
 Evaluate flashcards for pedagogical effectiveness, learning objectives,
 cognitive levels, and educational best practices.""",
                 model="gpt-4o",
-                temperature=0.4
+                temperature=0.4,
             )
-        
+
         super().__init__(base_config, openai_client)
-    
+
     async def judge_card(self, card: Card) -> JudgeDecision:
         """Judge a single card for pedagogical effectiveness"""
         start_time = datetime.now()
-        
+
         try:
             user_input = self._build_judgment_prompt(card)
             response = await self.execute(user_input)
-            
-            decision_data = json.loads(response) if isinstance(response, str) else response
+
+            decision_data = (
+                json.loads(response) if isinstance(response, str) else response
+            )
             decision = self._parse_decision(decision_data)
-            
+
             record_agent_execution(
                 agent_name=self.config.name,
                 start_time=start_time,
@@ -184,29 +188,29 @@ cognitive levels, and educational best practices.""",
                 metadata={
                     "cards_judged": 1,
                     "approved": 1 if decision.approved else 0,
-                    "score": decision.score
-                }
+                    "score": decision.score,
+                },
             )
-            
+
             return decision
-            
+
         except Exception as e:
             record_agent_execution(
                 agent_name=self.config.name,
                 start_time=start_time,
                 end_time=datetime.now(),
                 success=False,
-                error_message=str(e)
+                error_message=str(e),
             )
-            
+
             logger.error(f"PedagogicalJudge failed: {e}")
             return JudgeDecision(
                 approved=True,
                 score=0.5,
                 feedback=f"Judgment failed: {str(e)}",
-                judge_name=self.config.name
+                judge_name=self.config.name,
             )
-    
+
     def _build_judgment_prompt(self, card: Card) -> str:
         """Build the judgment prompt for pedagogical effectiveness"""
         return f"""Evaluate this flashcard for pedagogical effectiveness:
@@ -237,7 +241,7 @@ Return your assessment as JSON:
     "improvement_suggestions": ["suggestion1", "suggestion2"],
     "detailed_feedback": "Comprehensive pedagogical assessment"
 }}"""
-    
+
     def _parse_decision(self, decision_data: Dict[str, Any]) -> JudgeDecision:
         """Parse the judge response into a JudgeDecision"""
         return JudgeDecision(
@@ -251,18 +255,18 @@ Return your assessment as JSON:
                 "cognitive_load": decision_data.get("cognitive_load", "medium"),
                 "learning_objectives": decision_data.get("learning_objectives", []),
                 "engagement_factors": decision_data.get("engagement_factors", []),
-                "pedagogical_issues": decision_data.get("pedagogical_issues", [])
-            }
+                "pedagogical_issues": decision_data.get("pedagogical_issues", []),
+            },
         )
 
 
 class ClarityJudge(BaseAgentWrapper):
     """Judge for clarity, readability, and communication effectiveness"""
-    
+
     def __init__(self, openai_client: AsyncOpenAI):
         config_manager = get_config_manager()
         base_config = config_manager.get_agent_config("clarity_judge")
-        
+
         if not base_config:
             base_config = AgentConfig(
                 name="clarity_judge",
@@ -270,22 +274,24 @@ class ClarityJudge(BaseAgentWrapper):
 Ensure flashcards are clear, unambiguous, well-written, and accessible
 to the target audience.""",
                 model="gpt-4o-mini",
-                temperature=0.3
+                temperature=0.3,
             )
-        
+
         super().__init__(base_config, openai_client)
-    
+
     async def judge_card(self, card: Card) -> JudgeDecision:
         """Judge a single card for clarity and communication"""
         start_time = datetime.now()
-        
+
         try:
             user_input = self._build_judgment_prompt(card)
             response = await self.execute(user_input)
-            
-            decision_data = json.loads(response) if isinstance(response, str) else response
+
+            decision_data = (
+                json.loads(response) if isinstance(response, str) else response
+            )
             decision = self._parse_decision(decision_data)
-            
+
             record_agent_execution(
                 agent_name=self.config.name,
                 start_time=start_time,
@@ -294,29 +300,29 @@ to the target audience.""",
                 metadata={
                     "cards_judged": 1,
                     "approved": 1 if decision.approved else 0,
-                    "score": decision.score
-                }
+                    "score": decision.score,
+                },
             )
-            
+
             return decision
-            
+
         except Exception as e:
             record_agent_execution(
                 agent_name=self.config.name,
                 start_time=start_time,
                 end_time=datetime.now(),
                 success=False,
-                error_message=str(e)
+                error_message=str(e),
             )
-            
+
             logger.error(f"ClarityJudge failed: {e}")
             return JudgeDecision(
                 approved=True,
                 score=0.5,
                 feedback=f"Judgment failed: {str(e)}",
-                judge_name=self.config.name
+                judge_name=self.config.name,
             )
-    
+
     def _build_judgment_prompt(self, card: Card) -> str:
         """Build the judgment prompt for clarity assessment"""
         return f"""Evaluate this flashcard for clarity and communication effectiveness:
@@ -346,7 +352,7 @@ Return your assessment as JSON:
     "improvement_suggestions": ["suggestion1", "suggestion2"],
     "detailed_feedback": "Comprehensive clarity assessment"
 }}"""
-    
+
     def _parse_decision(self, decision_data: Dict[str, Any]) -> JudgeDecision:
         """Parse the judge response into a JudgeDecision"""
         return JudgeDecision(
@@ -360,33 +366,33 @@ Return your assessment as JSON:
                 "answer_completeness": decision_data.get("answer_completeness", 0.5),
                 "readability_level": decision_data.get("readability_level", "unknown"),
                 "ambiguities": decision_data.get("ambiguities", []),
-                "clarity_issues": decision_data.get("clarity_issues", [])
-            }
+                "clarity_issues": decision_data.get("clarity_issues", []),
+            },
         )
 
 
 class TechnicalJudge(BaseAgentWrapper):
     """Judge for technical accuracy in programming and technical content"""
-    
+
     def __init__(self, openai_client: AsyncOpenAI):
         config_manager = get_config_manager()
         base_config = config_manager.get_agent_config("technical_judge")
-        
+
         if not base_config:
             base_config = AgentConfig(
                 name="technical_judge",
                 instructions="""You are a technical accuracy specialist for programming and technical content.
 Verify code syntax, best practices, security considerations, and technical correctness.""",
                 model="gpt-4o",
-                temperature=0.2
+                temperature=0.2,
             )
-        
+
         super().__init__(base_config, openai_client)
-    
+
     async def judge_card(self, card: Card) -> JudgeDecision:
         """Judge a single card for technical accuracy"""
         start_time = datetime.now()
-        
+
         try:
             # Only judge technical content
             if not self._is_technical_content(card):
@@ -394,15 +400,17 @@ Verify code syntax, best practices, security considerations, and technical corre
                     approved=True,
                     score=1.0,
                     feedback="Non-technical content - no technical review needed",
-                    judge_name=self.config.name
+                    judge_name=self.config.name,
                 )
-            
+
             user_input = self._build_judgment_prompt(card)
             response = await self.execute(user_input)
-            
-            decision_data = json.loads(response) if isinstance(response, str) else response
+
+            decision_data = (
+                json.loads(response) if isinstance(response, str) else response
+            )
             decision = self._parse_decision(decision_data)
-            
+
             record_agent_execution(
                 agent_name=self.config.name,
                 start_time=start_time,
@@ -412,42 +420,61 @@ Verify code syntax, best practices, security considerations, and technical corre
                     "cards_judged": 1,
                     "approved": 1 if decision.approved else 0,
                     "score": decision.score,
-                    "is_technical": True
-                }
+                    "is_technical": True,
+                },
             )
-            
+
             return decision
-            
+
         except Exception as e:
             record_agent_execution(
                 agent_name=self.config.name,
                 start_time=start_time,
                 end_time=datetime.now(),
                 success=False,
-                error_message=str(e)
+                error_message=str(e),
             )
-            
+
             logger.error(f"TechnicalJudge failed: {e}")
             return JudgeDecision(
                 approved=True,
                 score=0.5,
                 feedback=f"Technical judgment failed: {str(e)}",
-                judge_name=self.config.name
+                judge_name=self.config.name,
             )
-    
+
     def _is_technical_content(self, card: Card) -> bool:
         """Determine if card contains technical content requiring technical review"""
         technical_keywords = [
-            "code", "programming", "algorithm", "function", "class", "method",
-            "syntax", "API", "database", "SQL", "python", "javascript", "java",
-            "framework", "library", "development", "software", "technical"
+            "code",
+            "programming",
+            "algorithm",
+            "function",
+            "class",
+            "method",
+            "syntax",
+            "API",
+            "database",
+            "SQL",
+            "python",
+            "javascript",
+            "java",
+            "framework",
+            "library",
+            "development",
+            "software",
+            "technical",
         ]
-        
-        content = f"{card.front.question} {card.back.answer} {card.back.explanation}".lower()
+
+        content = (
+            f"{card.front.question} {card.back.answer} {card.back.explanation}".lower()
+        )
         subject = card.metadata.get("subject", "").lower()
-        
-        return any(keyword in content or keyword in subject for keyword in technical_keywords)
-    
+
+        return any(
+            keyword in content or keyword in subject for keyword in technical_keywords
+        )
+
     def _build_judgment_prompt(self, card: Card) -> str:
         """Build the judgment prompt for technical accuracy"""
         return f"""Evaluate this technical flashcard for accuracy and best practices:
@@ -478,7 +505,7 @@ Return your assessment as JSON:
     "improvement_suggestions": ["suggestion1", "suggestion2"],
     "detailed_feedback": "Comprehensive technical assessment"
 }}"""
-    
+
     def _parse_decision(self, decision_data: Dict[str, Any]) -> JudgeDecision:
         """Parse the judge response into a JudgeDecision"""
         return JudgeDecision(
@@ -489,21 +516,23 @@ Return your assessment as JSON:
             judge_name=self.config.name,
             metadata={
                 "syntax_errors": decision_data.get("syntax_errors", []),
-                "best_practice_violations": decision_data.get("best_practice_violations", []),
+                "best_practice_violations": decision_data.get(
+                    "best_practice_violations", []
+                ),
                 "security_issues": decision_data.get("security_issues", []),
                 "performance_concerns": decision_data.get("performance_concerns", []),
-                "tool_inaccuracies": decision_data.get("tool_inaccuracies", [])
-            }
+                "tool_inaccuracies": decision_data.get("tool_inaccuracies", []),
+            },
         )
 
 
 class CompletenessJudge(BaseAgentWrapper):
     """Judge for completeness and quality standards"""
-    
+
     def __init__(self, openai_client: AsyncOpenAI):
         config_manager = get_config_manager()
         base_config = config_manager.get_agent_config("completeness_judge")
-        
+
         if not base_config:
             base_config = AgentConfig(
                 name="completeness_judge",
@@ -511,22 +540,24 @@ class CompletenessJudge(BaseAgentWrapper):
 Ensure flashcards meet all requirements, have complete information,
 and maintain consistent quality standards.""",
                 model="gpt-4o-mini",
-                temperature=0.3
+                temperature=0.3,
             )
-        
+
         super().__init__(base_config, openai_client)
-    
+
     async def judge_card(self, card: Card) -> JudgeDecision:
         """Judge a single card for completeness"""
         start_time = datetime.now()
-        
+
         try:
             user_input = self._build_judgment_prompt(card)
             response = await self.execute(user_input)
-            
-            decision_data = json.loads(response) if isinstance(response, str) else response
+
+            decision_data = (
+                json.loads(response) if isinstance(response, str) else response
+            )
             decision = self._parse_decision(decision_data)
-            
+
             record_agent_execution(
                 agent_name=self.config.name,
                 start_time=start_time,
@@ -535,29 +566,29 @@ and maintain consistent quality standards.""",
                 metadata={
                     "cards_judged": 1,
                     "approved": 1 if decision.approved else 0,
-                    "score": decision.score
-                }
+                    "score": decision.score,
+                },
             )
-            
+
             return decision
-            
+
         except Exception as e:
             record_agent_execution(
                 agent_name=self.config.name,
                 start_time=start_time,
                 end_time=datetime.now(),
                 success=False,
-                error_message=str(e)
+                error_message=str(e),
             )
-            
+
             logger.error(f"CompletenessJudge failed: {e}")
             return JudgeDecision(
                 approved=True,
                 score=0.5,
                 feedback=f"Completeness judgment failed: {str(e)}",
-                judge_name=self.config.name
+                judge_name=self.config.name,
             )
-    
+
     def _build_judgment_prompt(self, card: Card) -> str:
         """Build the judgment prompt for completeness assessment"""
         return f"""Evaluate this flashcard for completeness and quality standards:
@@ -588,7 +619,7 @@ Return your assessment as JSON:
     "improvement_suggestions": ["suggestion1", "suggestion2"],
     "detailed_feedback": "Comprehensive completeness assessment"
 }}"""
-    
+
     def _parse_decision(self, decision_data: Dict[str, Any]) -> JudgeDecision:
         """Parse the judge response into a JudgeDecision"""
         return JudgeDecision(
@@ -601,18 +632,18 @@ Return your assessment as JSON:
                 "missing_fields": decision_data.get("missing_fields", []),
                 "incomplete_sections": decision_data.get("incomplete_sections", []),
                 "metadata_issues": decision_data.get("metadata_issues", []),
-                "quality_concerns": decision_data.get("quality_concerns", [])
-            }
+                "quality_concerns": decision_data.get("quality_concerns", []),
+            },
         )
 
 
 class JudgeCoordinator(BaseAgentWrapper):
     """Coordinates multiple judges and synthesizes their decisions"""
-    
+
     def __init__(self, openai_client: AsyncOpenAI):
         config_manager = get_config_manager()
         base_config = config_manager.get_agent_config("judge_coordinator")
-        
+
         if not base_config:
             base_config = AgentConfig(
                 name="judge_coordinator",
@@ -620,35 +651,35 @@ class JudgeCoordinator(BaseAgentWrapper):
 Orchestrate the judging process and synthesize feedback from specialist judges.
 Balance speed with thoroughness in quality assessment.""",
                 model="gpt-4o-mini",
-                temperature=0.3
+                temperature=0.3,
             )
-        
+
         super().__init__(base_config, openai_client)
-        
+
         # Initialize specialist judges
         self.content_accuracy = ContentAccuracyJudge(openai_client)
         self.pedagogical = PedagogicalJudge(openai_client)
         self.clarity = ClarityJudge(openai_client)
         self.technical = TechnicalJudge(openai_client)
         self.completeness = CompletenessJudge(openai_client)
-    
+
     async def coordinate_judgment(
         self,
         cards: List[Card],
         enable_parallel: bool = True,
-        min_consensus: float = 0.6
+        min_consensus: float = 0.6,
     ) -> List[Tuple[Card, List[JudgeDecision], bool]]:
         """Coordinate judgment of multiple cards"""
         start_time = datetime.now()
-        
+
         try:
             results = []
-            
+
             if enable_parallel:
                 # Process all cards in parallel
                 tasks = [self._judge_single_card(card, min_consensus) for card in cards]
                 card_results = await asyncio.gather(*tasks, return_exceptions=True)
-                
+
                 for card, result in zip(cards, card_results):
                     if isinstance(result, Exception):
                         logger.error(f"Parallel judgment failed for card: {result}")
@@ -664,11 +695,11 @@ Balance speed with thoroughness in quality assessment.""",
                     except Exception as e:
                         logger.error(f"Sequential judgment failed for card: {e}")
                         results.append((card, [], False))
-            
-                         # Calculate summary statistics
-             total_cards = len(cards)
-             approved_cards = len([result for _, _, approved in results if approved])
-            
+
+            # Calculate summary statistics
+            total_cards = len(cards)
+            approved_cards = len([result for _, _, approved in results if approved])
+
             record_agent_execution(
                 agent_name=self.config.name,
                 start_time=start_time,
@@ -677,49 +708,51 @@ Balance speed with thoroughness in quality assessment.""",
                 metadata={
                     "cards_judged": total_cards,
                     "cards_approved": approved_cards,
-                    "approval_rate": approved_cards / total_cards if total_cards > 0 else 0,
-                    "parallel_processing": enable_parallel
-                }
+                    "approval_rate": approved_cards / total_cards
+                    if total_cards > 0
+                    else 0,
+                    "parallel_processing": enable_parallel,
+                },
             )
-            
-            logger.info(f"Judge coordination complete: {approved_cards}/{total_cards} cards approved")
+
+            logger.info(
+                f"Judge coordination complete: {approved_cards}/{total_cards} cards approved"
+            )
             return results
-            
+
         except Exception as e:
             record_agent_execution(
                 agent_name=self.config.name,
                 start_time=start_time,
                 end_time=datetime.now(),
                 success=False,
-                error_message=str(e)
+                error_message=str(e),
             )
-            
+
             logger.error(f"Judge coordination failed: {e}")
             raise
-    
+
     async def _judge_single_card(
-        self,
-        card: Card,
-        min_consensus: float
+        self, card: Card, min_consensus: float
     ) -> Tuple[Card, List[JudgeDecision], bool]:
         """Judge a single card with all relevant judges"""
-        
+
         # Determine which judges to use based on card content
         judges = [
             self.content_accuracy,
             self.pedagogical,
             self.clarity,
-            self.completeness
+            self.completeness,
         ]
-        
+
         # Add technical judge only for technical content
         if self.technical._is_technical_content(card):
             judges.append(self.technical)
-        
+
         # Execute all judges in parallel
         judge_tasks = [judge.judge_card(card) for judge in judges]
         decisions = await asyncio.gather(*judge_tasks, return_exceptions=True)
-        
+
         # Filter out failed decisions
         valid_decisions = []
         for decision in decisions:
@@ -727,15 +760,15 @@ Balance speed with thoroughness in quality assessment.""",
                 valid_decisions.append(decision)
             else:
                 logger.warning(f"Judge decision failed: {decision}")
-        
+
         # Calculate consensus
         if not valid_decisions:
             return (card, [], False)
-        
+
         approval_votes = len([d for d in valid_decisions if d.approved])
         consensus_score = approval_votes / len(valid_decisions)
-        
+
         # Determine final approval based on consensus
         final_approval = consensus_score >= min_consensus
-        
+
         return (card, valid_decisions, final_approval)

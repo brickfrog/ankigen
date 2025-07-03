@@ -40,6 +40,7 @@ client_manager = OpenAIClientManager()  # Initialize client manager
 # Check agent system availability
 try:
     from ankigen_core.agents.feature_flags import get_feature_flags
+
     AGENTS_AVAILABLE_APP = True
     logger.info("Agent system is available")
 except ImportError:
@@ -187,7 +188,7 @@ def create_ankigen_interface():
         with gr.Column(elem_classes="contain"):
             gr.Markdown("# 📚 AnkiGen - Advanced Anki Card Generator")
             gr.Markdown("#### Generate comprehensive Anki flashcards using AI.")
-            
+
             # Agent system status indicator
             if AGENTS_AVAILABLE_APP:
                 try:
@@ -198,13 +199,13 @@ def create_ankigen_interface():
                     else:
                         agent_status_emoji = "🔧"
                         agent_status_text = "**Legacy Mode** - Set `ANKIGEN_AGENT_MODE=agent_only` to enable agents"
-                except:
+                except Exception:
                     agent_status_emoji = "⚙️"
                     agent_status_text = "**Agent System Available** - Configure environment variables to activate"
             else:
                 agent_status_emoji = "💡"
                 agent_status_text = "**Legacy Mode** - Agent system not installed"
-            
+
             gr.Markdown(f"{agent_status_emoji} {agent_status_text}")
 
             with gr.Accordion("Configuration Settings", open=True):

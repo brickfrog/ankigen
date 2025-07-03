@@ -14,7 +14,6 @@ from ankigen_core.models import (
     CardGeneration,
     LearningSequence,
     CrawledPage,
-    AnkiCardData,
 )
 
 
@@ -355,54 +354,3 @@ def test_crawled_page_with_metadata():
     assert page.meta_keywords == ["test", "metadata", "example"]
     assert page.crawl_depth == 0
     assert page.parent_url is None  # Not provided, should be default
-
-
-# Tests for AnkiCardData model
-def test_anki_card_data_creation():
-    card_data_dict = {
-        "front": "What is PydanticAI?",
-        "back": "An agent framework.",
-        "tags": ["python", "ai"],
-        "source_url": "http://example.com/pydantic-ai",
-        "note_type": "Q&A",
-    }
-    card = AnkiCardData(**card_data_dict)
-    assert card.front == card_data_dict["front"]
-    assert card.back == card_data_dict["back"]
-    assert card.tags == card_data_dict["tags"]
-    assert card.source_url == card_data_dict["source_url"]
-    assert card.note_type == card_data_dict["note_type"]
-
-
-def test_anki_card_data_defaults():
-    card_data_dict = {"front": "Question?", "back": "Answer."}
-    card = AnkiCardData(**card_data_dict)
-    assert card.tags == []
-    assert card.source_url is None
-    assert card.note_type == "Basic"
-
-
-def test_anki_card_data_missing_required_fields():
-    with pytest.raises(ValidationError):
-        AnkiCardData(back="Answer")  # Missing front
-    with pytest.raises(ValidationError):
-        AnkiCardData(front="Question")  # Missing back
-
-
-def test_anki_card_data_serialization():
-    card_data_dict = {
-        "front": "What is PydanticAI?",
-        "back": "An agent framework.",
-        "tags": ["python", "ai"],
-        "source_url": "http://example.com/pydantic-ai",
-        "note_type": "Q&A",
-    }
-    card = AnkiCardData(**card_data_dict)
-    # model_dump will exclude Nones by default if not set otherwise,
-    # and default_factory lists will be present
-    expected_dump = card_data_dict.copy()
-    if not expected_dump.get("tags"):
-        expected_dump[
-            "tags"
-        ] = []  # pydantic >=2.0 includes fields with default_factory in dump
-    assert card.model_dump() == expected_dump

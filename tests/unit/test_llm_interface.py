@@ -20,7 +20,7 @@ from ankigen_core.llm_interface import (
 from ankigen_core.utils import (
     ResponseCache,
 )  # Need ResponseCache for testing structured_output_completion
-from ankigen_core.models import CrawledPage, AnkiCardData
+from ankigen_core.models import CrawledPage
 
 # --- OpenAIClientManager Tests ---
 
@@ -619,12 +619,13 @@ async def test_process_crawled_pages_success(mock_openai_client, sample_crawled_
 
     # Mock process_crawled_page to return different cards for different pages
     async def mock_single_page_processor(openai_client, page, model="gpt-4o", **kwargs):
+        # AnkiCardData removed - using dict instead
         if page.url == pages_to_process[0].url:
-            return [AnkiCardData(front="P1Q1", back="P1A1", source_url=page.url)]
+            return [{"front": "P1Q1", "back": "P1A1", "source_url": page.url}]
         elif page.url == pages_to_process[1].url:
             return [
-                AnkiCardData(front="P2Q1", back="P2A1", source_url=page.url),
-                AnkiCardData(front="P2Q2", back="P2A2", source_url=page.url),
+                {"front": "P2Q1", "back": "P2A1", "source_url": page.url},
+                {"front": "P2Q2", "back": "P2A2", "source_url": page.url},
             ]
         return []
 
@@ -664,11 +665,11 @@ async def test_process_crawled_pages_partial_failure(
         openai_client, page, model="gpt-4o", **kwargs
     ):
         if page.url == pages_to_process[0].url:
-            return [AnkiCardData(front="P1Q1", back="P1A1", source_url=page.url)]
+            return [{"front": "P1Q1", "back": "P1A1", "source_url": page.url}]
         elif page.url == pages_to_process[1].url:  # page_fail
             raise APIConnectionError(request=MagicMock())
         elif page.url == pages_to_process[2].url:
-            return [AnkiCardData(front="P3Q1", back="P3A1", source_url=page.url)]
+            return [{"front": "P3Q1", "back": "P3A1", "source_url": page.url}]
         return []
 
     with patch(
@@ -695,7 +696,7 @@ async def test_process_crawled_pages_progress_callback(
 
     async def mock_simple_processor(client, page, model, max_tokens):
         await asyncio.sleep(0.01)  # Simulate work
-        return [AnkiCardData(front=f"{page.url}-Q", back="A", source_url=page.url)]
+        return [{"front": f"{page.url}-Q", "back": "A", "source_url": page.url}]
 
     with patch(
         "ankigen_core.llm_interface.process_crawled_page",

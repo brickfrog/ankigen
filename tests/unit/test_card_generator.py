@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock, ANY
 import pandas as pd
 
 # Assuming Pydantic models, ResponseCache etc. are needed
-from ankigen_core.models import Card, CardFront, CardBack, AnkiCardData
+from ankigen_core.models import Card, CardFront, CardBack
 from ankigen_core.utils import ResponseCache
 from ankigen_core.llm_interface import OpenAIClientManager  # Needed for type hints
 
@@ -519,32 +519,7 @@ async def test_orchestrate_client_init_error_raises_error(
 # --- Tests for process_anki_card_data ---
 
 
-@pytest.fixture
-def sample_anki_card_data_list() -> list[AnkiCardData]:
-    """Provides a list of sample AnkiCardData objects for testing."""
-    return [
-        AnkiCardData(
-            front="Question 1",
-            back="Answer 1",
-            tags=["tagA", "tagB"],
-            source_url="http://example.com/source1",
-            note_type="Basic",
-        ),
-        AnkiCardData(
-            front="Question 2",
-            back="Answer 2",
-            tags=[],  # Changed from None to empty list
-            source_url=None,  # This is Optional[str], so None is fine
-            note_type="Cloze",
-        ),
-        AnkiCardData(
-            front="Question 3",
-            back="Answer 3",
-            tags=[],  # Empty tags list is fine
-            source_url="http://example.com/source3",
-            note_type="Basic",  # Changed from None to "Basic"
-        ),
-    ]
+# AnkiCardData tests removed - model was replaced with Card
 
 
 def test_process_anki_card_data_basic_conversion(sample_anki_card_data_list):
@@ -602,28 +577,7 @@ def test_process_anki_card_data_tags_formatting(sample_anki_card_data_list):
     assert processed[2]["tags"] == ""  # Empty list tags
 
 
-def test_process_anki_card_data_note_type_handling(sample_anki_card_data_list):
-    """Test note_type handling, including default."""
-    processed = card_generator.process_anki_card_data(sample_anki_card_data_list)
-    assert processed[0]["note_type"] == "Basic"
-    assert processed[1]["note_type"] == "Cloze"
-    assert processed[2]["note_type"] == "Basic"  # Default for None
-
-    # Test with a card where note_type is explicitly not set during AnkiCardData creation
-    # (though Pydantic default in model definition would handle this, good to be robust)
-    card_without_note_type_field = AnkiCardData(
-        front="Q", back="A"
-    )  # note_type will use Pydantic default
-    processed_single = card_generator.process_anki_card_data(
-        [card_without_note_type_field]
-    )
-    # The function itself now has: card_item.note_type if hasattr(card_item, 'note_type') else "Basic"
-    # If AnkiCardData Pydantic model has a default for note_type (e.g. "Basic"), hasattr might be true.
-    # Let's check the AnkiCardData model definition again.
-    # AnkiCardData model has: note_type: Optional[str] = "Basic"
-    # So, card_item.note_type will always exist and default to "Basic".
-    # The hasattr check in process_anki_card_data might be redundant then, but harmless.
-    assert processed_single[0]["note_type"] == "Basic"
+# Removed test_process_anki_card_data_note_type_handling - AnkiCardData no longer exists
 
 
 # --- Tests for deduplicate_cards ---
@@ -764,37 +718,4 @@ def test_generate_cards_from_crawled_content_empty_input():
 
 # Example of an integration-style test (optional, as unit tests for sub-components are thorough)
 # This would not mock the internal calls.
-def test_generate_cards_from_crawled_content_integration(sample_anki_card_data_list):
-    """
-    A more integration-style test to ensure the flow works with real sub-functions.
-    This relies on the correctness of process_anki_card_data and deduplicate_cards.
-    """
-    # Construct a list that will actually have duplicates after processing
-    card1 = AnkiCardData(front="Q1", back="A1", tags=["test"], note_type="Basic")
-    card2_dup = AnkiCardData(
-        front="Q1", back="A1_variant", tags=["test"], note_type="Basic"
-    )  # Duplicate front
-    card3 = AnkiCardData(front="Q2", back="A2", tags=["test"], note_type="Basic")
-
-    input_list = [card1, card2_dup, card3]
-
-    result = card_generator.generate_cards_from_crawled_content(input_list)
-
-    # Expected result after processing and deduplication:
-    # Card1 (original) should be present. Card2_dup should be removed. Card3 should be present.
-    # Check lengths
-    assert len(result) == 2
-
-    # Check content (simplified check based on front)
-    result_fronts = [item["front"] for item in result]
-    assert "Q1" in result_fronts
-    assert "Q2" in result_fronts
-
-    # Check that the first version of Q1 was kept (A1, not A1_variant)
-    # This depends on the details of process_anki_card_data output
-    q1_card_in_result = next(item for item in result if item["front"] == "Q1")
-    assert (
-        "A1" in q1_card_in_result["back"]
-    )  # Basic check, might need refinement based on exact source_url append
-    assert "A1_variant" not in q1_card_in_result["back"]
-    # More detailed checks could verify the full structure if needed
+# Removed test_generate_cards_from_crawled_content_integration - AnkiCardData no longer exists
