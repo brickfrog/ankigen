@@ -22,6 +22,17 @@ from ankigen_core.models import (
 
 logger = get_logger()
 
+# Import agent system
+try:
+    from ankigen_core.agents.integration import AgentOrchestrator
+    from ankigen_core.agents.feature_flags import get_feature_flags
+    AGENTS_AVAILABLE = True
+    logger.info("Agent system loaded successfully")
+except ImportError:
+    # Graceful fallback if agent system not available
+    AGENTS_AVAILABLE = False
+    logger.info("Agent system not available, using legacy generation only")
+
 # --- Constants --- (Moved from app.py)
 AVAILABLE_MODELS = [
     {
@@ -243,7 +254,67 @@ async def orchestrate_card_generation(  # MODIFIED: Added async
         f"Parameters: mode={generation_mode}, topics={topic_number}, cards_per_topic={cards_per_topic}, cloze={generate_cloze}"
     )
 
-    # --- Initialization and Validation ---
+    # --- AGENT SYSTEM INTEGRATION ---
+    if AGENTS_AVAILABLE:
+        feature_flags = get_feature_flags()
+        if feature_flags.should_use_agents():
+            logger.info("🤖 Using agent system for card generation")
+            try:
+                # Initialize agent orchestrator
+                orchestrator = AgentOrchestrator(client_manager)
+                await orchestrator.initialize(api_key_input)
+                
+                # Map generation mode to subject
+                agent_subject = "general"
+                if generation_mode == "subject":
+                    agent_subject = subject if subject else "general"
+                elif generation_mode == "path":
+                    agent_subject = "curriculum_design"
+                elif generation_mode == "text":
+                    agent_subject = "content_analysis"
+                
+                # Calculate total cards needed
+                total_cards_needed = topic_number * cards_per_topic
+                
+                # Prepare context for text mode
+                context = {}
+                if generation_mode == "text" and source_text:
+                    context["source_text"] = source_text
+                
+                # Generate cards with agents
+                agent_cards, agent_metadata = await orchestrator.generate_cards_with_agents(
+                    topic=subject if subject else "Mixed Topics",
+                    subject=agent_subject,
+                    num_cards=total_cards_needed,
+                    difficulty="intermediate",  # Could be made configurable
+                    enable_quality_pipeline=True,
+                    context=context
+                )
+                
+                # Convert agent cards to dataframe format
+                if agent_cards:
+                    formatted_cards = format_cards_for_dataframe(
+                        agent_cards,
+                        topic_name=f"Agent Generated - {subject}" if subject else "Agent Generated",
+                        start_index=1
+                    )
+                    
+                    output_df = pd.DataFrame(formatted_cards, columns=get_dataframe_columns())
+                    total_cards_message = f"<div><b>🤖 Agent Generated Cards:</b> <span id='total-cards-count'>{len(output_df)}</span></div>"
+                    
+                    logger.info(f"Agent system generated {len(output_df)} cards successfully")
+                    return output_df, total_cards_message
+                else:
+                    logger.warning("Agent system returned no cards, falling back to legacy")
+                    gr.Info("🔄 Agent system returned no cards, using legacy generation...")
+                    
+            except Exception as e:
+                logger.error(f"Agent system failed: {e}, falling back to legacy generation")
+                gr.Warning(f"🔄 Agent system error: {str(e)}, using legacy generation...")
+                # Continue to legacy generation below
+
+    # --- LEGACY SYSTEM INITIALIZATION AND VALIDATION ---
+    logger.info("Using legacy card generation system")
     if not api_key_input:
         logger.warning("No API key provided to orchestrator")
         gr.Error("OpenAI API key is required")
@@ -654,9 +725,9 @@ async def orchestrate_card_generation(  # MODIFIED: Added async
 
         output_df = pd.DataFrame(final_cards_data, columns=get_dataframe_columns())
 
-        total_cards_message = f"<div><b>Total Cards Generated:</b> <span id='total-cards-count'>{len(output_df)}</span></div>"
+        total_cards_message = f"<div><b>💡 Legacy Generated Cards:</b> <span id='total-cards-count'>{len(output_df)}</span></div>"
 
-        logger.info(f"Orchestration complete. Total cards: {len(output_df)}")
+        logger.info(f"Legacy orchestration complete. Total cards: {len(output_df)}")
         return output_df, total_cards_message
 
     except Exception as e:
