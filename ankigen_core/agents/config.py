@@ -126,6 +126,10 @@ class AgentConfigManager:
         """Get configuration for a specific agent"""
         return self.configs.get(agent_name)
     
+    def get_config(self, agent_name: str) -> Optional[AgentConfig]:
+        """Alias for get_agent_config for compatibility"""
+        return self.get_agent_config(agent_name)
+    
     def get_prompt_template(self, template_name: str) -> Optional[AgentPromptTemplate]:
         """Get a prompt template by name"""
         return self.prompt_templates.get(template_name)
@@ -138,6 +142,72 @@ class AgentConfigManager:
                 if hasattr(config, key):
                     setattr(config, key, value)
                     logger.info(f"Updated {agent_name} config: {key} = {value}")
+    
+    def update_config(self, agent_name: str, updates: Dict[str, Any]) -> Optional[AgentConfig]:
+        """Update agent configuration with a dictionary of updates"""
+        if agent_name not in self.configs:
+            return None
+        
+        config = self.configs[agent_name]
+        for key, value in updates.items():
+            if hasattr(config, key):
+                setattr(config, key, value)
+        
+        return config
+    
+    def list_configs(self) -> List[str]:
+        """List all agent configuration names"""
+        return list(self.configs.keys())
+    
+    def list_prompt_templates(self) -> List[str]:
+        """List all prompt template names"""
+        return list(self.prompt_templates.keys())
+    
+    def load_config_from_dict(self, config_dict: Dict[str, Any]):
+        """Load configuration from a dictionary"""
+        # Load agent configs
+        if 'agents' in config_dict:
+            for agent_name, agent_data in config_dict['agents'].items():
+                config = AgentConfig(
+                    name=agent_name,
+                    instructions=agent_data.get('instructions', ''),
+                    model=agent_data.get('model', 'gpt-4o'),
+                    temperature=agent_data.get('temperature', 0.7),
+                    max_tokens=agent_data.get('max_tokens'),
+                    timeout=agent_data.get('timeout', 30.0),
+                    retry_attempts=agent_data.get('retry_attempts', 3),
+                    enable_tracing=agent_data.get('enable_tracing', True),
+                    custom_prompts=agent_data.get('custom_prompts', {})
+                )
+                self.configs[agent_name] = config
+        
+        # Load prompt templates
+        if 'prompt_templates' in config_dict:
+            for template_name, template_data in config_dict['prompt_templates'].items():
+                template = AgentPromptTemplate(
+                    system_prompt=template_data.get('system_prompt', ''),
+                    user_prompt_template=template_data.get('user_prompt_template', ''),
+                    variables=template_data.get('variables', {})
+                )
+                self.prompt_templates[template_name] = template
+    
+    def _validate_config(self, config_data: Dict[str, Any]) -> bool:
+        """Validate agent configuration data"""
+        # Check required fields
+        if 'name' not in config_data or 'instructions' not in config_data:
+            return False
+        
+        # Check temperature range
+        temperature = config_data.get('temperature', 0.7)
+        if not 0.0 <= temperature <= 2.0:
+            return False
+        
+        # Check timeout is positive
+        timeout = config_data.get('timeout', 30.0)
+        if timeout <= 0:
+            return False
+        
+        return True
     
     def save_config_to_file(self, filename: str, agents: List[str] = None):
         """Save current configurations to a file"""
