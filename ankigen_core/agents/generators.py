@@ -285,6 +285,28 @@ and Cognitive Load Theory. Review for clear learning objectives and appropriate 
             logger.error(f"PedagogicalAgent review failed: {e}")
             raise
     
+    def _parse_review_response(self, response) -> Dict[str, Any]:
+        """Parse the review response into a dictionary"""
+        try:
+            if isinstance(response, str):
+                data = json.loads(response)
+            else:
+                data = response
+            
+            # Validate required fields
+            required_fields = ['pedagogical_quality', 'clarity', 'learning_effectiveness']
+            if not all(field in data for field in required_fields):
+                raise ValueError("Missing required review fields")
+            
+            return data
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse review response as JSON: {e}")
+            raise ValueError(f"Invalid review response: {e}")
+        except Exception as e:
+            logger.error(f"Failed to parse review response: {e}")
+            raise ValueError(f"Invalid review response: {e}")
+    
     def _build_review_prompt(self, card: Card, index: int) -> str:
         """Build the review prompt for a single card"""
         return f"""Review this flashcard for pedagogical effectiveness:
