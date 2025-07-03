@@ -16,7 +16,13 @@ The AnkiGen Agent System replaces the traditional single-LLM approach with a pip
 ### 1. Installation
 
 ```bash
-pip install openai-agents pyyaml
+pip install pyyaml
+```
+
+Or use the project's dependency management:
+
+```bash
+uv pip install -e .
 ```
 
 ### 2. Environment Configuration
