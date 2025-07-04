@@ -20,30 +20,29 @@ from ankigen_core.models import (
     CardBack,
 )  # Import necessary Pydantic models
 
+# Import agent system - required
+from ankigen_core.agents.integration import AgentOrchestrator
+from agents import set_tracing_disabled
+
 logger = get_logger()
 
-# Import agent system
-try:
-    from ankigen_core.agents.integration import AgentOrchestrator
-    from ankigen_core.agents.feature_flags import get_feature_flags
-    AGENTS_AVAILABLE = True
-    logger.info("Agent system loaded successfully")
-except ImportError:
-    # Graceful fallback if agent system not available
-    AGENTS_AVAILABLE = False
-    logger.info("Agent system not available, using legacy generation only")
+# Disable tracing to prevent metrics persistence issues
+set_tracing_disabled(True)
+
+AGENTS_AVAILABLE = True
+logger.info("Agent system loaded successfully")
 
 # --- Constants --- (Moved from app.py)
 AVAILABLE_MODELS = [
     {
         "value": "gpt-4.1",
-        "label": "gpt-4.1 (Best Quality)",
-        "description": "Highest quality, slower generation",
+        "label": "GPT-4.1 (Best Quality)",
+        "description": "Highest quality, large context window",
     },
     {
         "value": "gpt-4.1-nano",
-        "label": "gpt-4.1 Nano (Fast & Efficient)",
-        "description": "Optimized for speed and lower cost",
+        "label": "GPT-4.1 Nano (Ultra Fast)",
+        "description": "Ultra-fast and cost-effective",
     },
 ]
 
@@ -256,65 +255,118 @@ async def orchestrate_card_generation(  # MODIFIED: Added async
 
     # --- AGENT SYSTEM INTEGRATION ---
     if AGENTS_AVAILABLE:
-        feature_flags = get_feature_flags()
-        if feature_flags.should_use_agents():
-            logger.info("🤖 Using agent system for card generation")
-            try:
-                # Initialize agent orchestrator
-                orchestrator = AgentOrchestrator(client_manager)
-                await orchestrator.initialize(api_key_input)
-                
-                # Map generation mode to subject
-                agent_subject = "general"
-                if generation_mode == "subject":
-                    agent_subject = subject if subject else "general"
-                elif generation_mode == "path":
-                    agent_subject = "curriculum_design"
-                elif generation_mode == "text":
-                    agent_subject = "content_analysis"
-                
-                # Calculate total cards needed
-                total_cards_needed = topic_number * cards_per_topic
-                
-                # Prepare context for text mode
-                context = {}
-                if generation_mode == "text" and source_text:
-                    context["source_text"] = source_text
-                
-                # Generate cards with agents
-                agent_cards, agent_metadata = await orchestrator.generate_cards_with_agents(
-                    topic=subject if subject else "Mixed Topics",
-                    subject=agent_subject,
-                    num_cards=total_cards_needed,
-                    difficulty="intermediate",  # Could be made configurable
-                    enable_quality_pipeline=True,
-                    context=context
-                )
-                
-                # Convert agent cards to dataframe format
-                if agent_cards:
-                    formatted_cards = format_cards_for_dataframe(
-                        agent_cards,
-                        topic_name=f"Agent Generated - {subject}" if subject else "Agent Generated",
-                        start_index=1
-                    )
-                    
-                    output_df = pd.DataFrame(formatted_cards, columns=get_dataframe_columns())
-                    total_cards_message = f"<div><b>🤖 Agent Generated Cards:</b> <span id='total-cards-count'>{len(output_df)}</span></div>"
-                    
-                    logger.info(f"Agent system generated {len(output_df)} cards successfully")
-                    return output_df, total_cards_message
-                else:
-                    logger.warning("Agent system returned no cards, falling back to legacy")
-                    gr.Info("🔄 Agent system returned no cards, using legacy generation...")
-                    
-            except Exception as e:
-                logger.error(f"Agent system failed: {e}, falling back to legacy generation")
-                gr.Warning(f"🔄 Agent system error: {str(e)}, using legacy generation...")
-                # Continue to legacy generation below
+        logger.info("🤖 Using agent system for card generation")
+        try:
+            # Initialize token tracker
+            from ankigen_core.agents.token_tracker import get_token_tracker
 
-    # --- LEGACY SYSTEM INITIALIZATION AND VALIDATION ---
-    logger.info("Using legacy card generation system")
+            token_tracker = get_token_tracker()
+
+            # Initialize agent orchestrator with the actual model from UI
+            # Initialize orchestrator with model overrides
+            orchestrator = AgentOrchestrator(client_manager)
+
+            # Set model overrides for all agents
+            logger.info(f"Overriding all agent models to use: {model_name}")
+            model_overrides = {
+                "generation_coordinator": model_name,
+                "subject_expert": model_name,
+                "pedagogical_agent": model_name,
+                "content_structuring": model_name,
+                "enhancement_agent": model_name,
+                "revision_agent": model_name,
+                "content_accuracy_judge": model_name,
+                "pedagogical_judge": model_name,
+                "clarity_judge": model_name,
+                "technical_judge": model_name,
+                "completeness_judge": model_name,
+                "judge_coordinator": model_name,
+            }
+
+            # Initialize with model overrides
+            await orchestrator.initialize(api_key_input, model_overrides)
+
+            # Map generation mode to subject
+            agent_subject = "general"
+            if generation_mode == "subject":
+                agent_subject = subject if subject else "general"
+            elif generation_mode == "path":
+                agent_subject = "curriculum_design"
+            elif generation_mode == "text":
+                agent_subject = "content_analysis"
+
+            # Calculate total cards needed
+            total_cards_needed = topic_number * cards_per_topic
+
+            # Prepare context for text mode
+            context = {}
+            if generation_mode == "text" and source_text:
+                context["source_text"] = source_text
+
+            # Generate cards with agents using the actual model from UI
+            agent_cards, agent_metadata = await orchestrator.generate_cards_with_agents(
+                topic=subject if subject else "Mixed Topics",
+                subject=agent_subject,
+                num_cards=total_cards_needed,
+                difficulty="intermediate",  # Could be made configurable
+                enable_quality_pipeline=True,
+                context=context,
+            )
+
+            # Get token usage from session
+            try:
+                # Try both method names for compatibility
+                if hasattr(token_tracker, "get_session_summary"):
+                    token_usage = token_tracker.get_session_summary()
+                elif hasattr(token_tracker, "get_session_usage"):
+                    token_usage = token_tracker.get_session_usage()
+                else:
+                    raise AttributeError("TokenTracker has no session summary method")
+
+                token_usage_html = f"<div style='margin-top: 8px;'><b>Token Usage:</b> {token_usage['total_tokens']} tokens</div>"
+            except Exception as e:
+                logger.error(f"Token usage collection failed: {e}")
+                token_usage_html = "<div style='margin-top: 8px;'><b>Token Usage:</b> No usage data</div>"
+
+            # Convert agent cards to dataframe format
+            if agent_cards:
+                formatted_cards = format_cards_for_dataframe(
+                    agent_cards,
+                    topic_name=f"Agent Generated - {subject}"
+                    if subject
+                    else "Agent Generated",
+                    start_index=1,
+                )
+
+                output_df = pd.DataFrame(
+                    formatted_cards, columns=get_dataframe_columns()
+                )
+                total_cards_message = f"<div><b>🤖 Agent Generated Cards:</b> <span id='total-cards-count'>{len(output_df)}</span></div>"
+
+                logger.info(
+                    f"Agent system generated {len(output_df)} cards successfully"
+                )
+                return output_df, total_cards_message, token_usage_html
+            else:
+                logger.error("Agent system returned no cards")
+                gr.Error("🤖 Agent system returned no cards")
+                return (
+                    pd.DataFrame(columns=get_dataframe_columns()),
+                    "Agent system returned no cards.",
+                    "",
+                )
+
+        except Exception as e:
+            logger.error(f"Agent system failed: {e}")
+            gr.Error(f"🤖 Agent system error: {str(e)}")
+            return (
+                pd.DataFrame(columns=get_dataframe_columns()),
+                f"Agent system error: {str(e)}",
+                "",
+            )
+
+    # This should never be reached since agents are required
+    logger.error("Agent system not available but required")
     if not api_key_input:
         logger.warning("No API key provided to orchestrator")
         gr.Error("OpenAI API key is required")
@@ -379,7 +431,7 @@ async def orchestrate_card_generation(  # MODIFIED: Added async
                 )
 
             topics_for_generation = []
-            max(1, topic_number // len(individual_subjects))  # Distribute topic_number
+            # max(1, topic_number // len(individual_subjects))  # Distribute topic_number
 
             for ind_subject in individual_subjects:
                 # For single/multiple subjects, we might generate sub-topics or just use the subject as a topic
@@ -1023,3 +1075,12 @@ def generate_cards_from_crawled_content(
         }
         data_for_dataframe.append(card_dict)
     return data_for_dataframe
+
+
+def generate_token_usage_html(token_usage=None):
+    """Generate HTML for token usage display"""
+    if token_usage and isinstance(token_usage, dict):
+        total_tokens = token_usage.get("total_tokens", 0)
+        return f"<div style='margin-top: 8px;'><b>Token Usage:</b> {total_tokens} tokens</div>"
+    else:
+        return "<div style='margin-top: 8px;'><b>Token Usage:</b> No usage data</div>"

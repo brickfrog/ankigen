@@ -15,7 +15,6 @@ import asyncio
 from ankigen_core.crawler import WebCrawler
 from ankigen_core.llm_interface import (
     OpenAIClientManager,
-    process_crawled_pages,
 )
 from ankigen_core.card_generator import (
     generate_cards_from_crawled_content,
@@ -37,12 +36,10 @@ from ankigen_core.models import (
 )
 
 # Import agent system for web crawling
-try:
-    from ankigen_core.agents.integration import AgentOrchestrator
-    from ankigen_core.agents.feature_flags import get_feature_flags
-    AGENTS_AVAILABLE_UI = True
-except ImportError:
-    AGENTS_AVAILABLE_UI = False
+# Agent system is required for web crawling
+from ankigen_core.agents.integration import AgentOrchestrator
+
+AGENTS_AVAILABLE_UI = True
 # --- End moved imports ---
 
 # Get an instance of the logger for this module
@@ -311,6 +308,7 @@ def create_crawler_main_mode_elements() -> (
         label="AI Model for Content Processing",  # Clarified label
         value=default_model_value_crawler,
         elem_id="crawler_model_dropdown",
+        allow_custom_value=True,
     )
     ui_components.append(model_dropdown)
 
@@ -544,120 +542,59 @@ async def crawl_and_generate(
             )
 
         # --- AGENT SYSTEM INTEGRATION FOR WEB CRAWLING ---
-        if AGENTS_AVAILABLE_UI:
-            feature_flags = get_feature_flags()
-            if feature_flags.should_use_agents():
-                crawler_ui_logger.info("🤖 Using agent system for web crawling card generation")
-                try:
-                    # Initialize agent orchestrator
-                    orchestrator = AgentOrchestrator(client_manager)
-                    await orchestrator.initialize("dummy-key")  # Key already in client_manager
-                    
-                    # Combine all crawled content into a single context
-                    combined_content = "\n\n--- PAGE BREAK ---\n\n".join([
-                        f"URL: {page.url}\nTitle: {page.title}\nContent: {page.text_content[:2000]}..."
-                        for page in crawled_pages[:10]  # Limit to first 10 pages to avoid token limits
-                    ])
-                    
-                    context = {
-                        "source_text": combined_content,
-                        "crawl_source": url,
-                        "pages_crawled": len(crawled_pages)
-                    }
-                    
-                    progress(0.6, desc="🤖 Processing with agent system...")
-                    
-                    # Generate cards with agents
-                    agent_cards, agent_metadata = await orchestrator.generate_cards_with_agents(
-                        topic=f"Content from {url}",
-                        subject="web_content",
-                        num_cards=min(len(crawled_pages) * 3, 50),  # 3 cards per page, max 50
-                        difficulty="intermediate",
-                        enable_quality_pipeline=True,
-                        context=context
-                    )
-                    
-                    if agent_cards:
-                        progress(0.9, desc=f"🤖 Agent system generated {len(agent_cards)} cards")
-                        
-                        cards_for_dataframe_export = generate_cards_from_crawled_content(agent_cards)
-                        
-                        final_message = f"🤖 Agent system processed content from {len(crawled_pages)} pages. Generated {len(agent_cards)} high-quality cards."
-                        progress(1.0, desc=final_message)
-                        
-                        return (
-                            final_message,
-                            cards_for_dataframe_export,
-                            agent_cards,
-                        )
-                    else:
-                        crawler_ui_logger.warning("Agent system returned no cards for web content, falling back to legacy")
-                        progress(0.5, desc="🔄 Agent system returned no cards, using legacy processing...")
-                        
-                except Exception as e:
-                    crawler_ui_logger.error(f"Agent system failed for web crawling: {e}, falling back to legacy")
-                    progress(0.5, desc=f"🔄 Agent error: {str(e)}, using legacy processing...")
+        crawler_ui_logger.info("🤖 Using agent system for web crawling card generation")
 
-        # --- LEGACY WEB PROCESSING ---
-        crawler_ui_logger.info("Using legacy LLM processing for web content")
-        openai_client = client_manager.get_client()
-        processed_llm_pages = 0
+        # Initialize agent orchestrator
+        orchestrator = AgentOrchestrator(client_manager)
+        await orchestrator.initialize("dummy-key")  # Key already in client_manager
 
-        def llm_progress_callback(completed_count: int, total_count: int):
-            nonlocal processed_llm_pages
-            processed_llm_pages = completed_count
-            progress(
-                0.5 + (completed_count / total_count) * 0.4,
-                desc=f"Processing content: {completed_count}/{total_count} pages processed by LLM.",
+        # Combine all crawled content into a single context
+        combined_content = "\n\n--- PAGE BREAK ---\n\n".join(
+            [
+                f"URL: {page.url}\nTitle: {page.title}\nContent: {page.text_content[:2000]}..."
+                for page in crawled_pages[
+                    :10
+                ]  # Limit to first 10 pages to avoid token limits
+            ]
+        )
+
+        context = {
+            "source_text": combined_content,
+            "crawl_source": url,
+            "pages_crawled": len(crawled_pages),
+        }
+
+        progress(0.6, desc="🤖 Processing with agent system...")
+
+        # Generate cards with agents
+        agent_cards, agent_metadata = await orchestrator.generate_cards_with_agents(
+            topic=f"Content from {url}",
+            subject="web_content",
+            num_cards=min(len(crawled_pages) * 3, 50),  # 3 cards per page, max 50
+            difficulty="intermediate",
+            enable_quality_pipeline=True,
+            context=context,
+        )
+
+        if agent_cards:
+            progress(0.9, desc=f"🤖 Agent system generated {len(agent_cards)} cards")
+
+            cards_for_dataframe_export = generate_cards_from_crawled_content(
+                agent_cards
             )
 
-        crawler_ui_logger.info(
-            f"Starting LLM processing for {len(crawled_pages)} pages..."
-        )
-        progress(
-            0.55, desc=f"Processing {len(crawled_pages)} pages with LLM ({model})..."
-        )
-        all_cards = await process_crawled_pages(  # This now returns List[Card]
-            openai_client=openai_client,
-            pages=crawled_pages,
-            model=model,
-            max_prompt_content_tokens=6000,
-            max_concurrent_requests=5,
-            custom_system_prompt=custom_system_prompt
-            if custom_system_prompt and custom_system_prompt.strip()
-            else None,
-            custom_user_prompt_template=custom_user_prompt_template
-            if custom_user_prompt_template and custom_user_prompt_template.strip()
-            else None,
-            progress_callback=llm_progress_callback,
-        )
-        crawler_ui_logger.info(
-            f"LLM processing finished. Generated {len(all_cards)} Card objects."  # Changed AnkiCardData to Card
-        )
-        progress(
-            0.9,
-            desc=f"LLM processing finished. Generated {len(all_cards)} Anki cards.",
-        )
+            final_message = f"🤖 Agent system processed content from {len(crawled_pages)} pages. Generated {len(agent_cards)} high-quality cards."
+            progress(1.0, desc=final_message)
 
-        if not all_cards:
-            progress(
-                1.0, desc="LLM processing complete, but no Anki cards were generated."
-            )
             return (
-                "LLM processing complete, but no Anki cards were generated.",
-                pd.DataFrame().to_dict(orient="records"),  # Empty DataFrame data
-                [],  # Empty list of raw cards
+                final_message,
+                cards_for_dataframe_export,
+                agent_cards,
             )
-
-        cards_for_dataframe_export = generate_cards_from_crawled_content(
-            all_cards
-        )  # Expects List[Card]
-        if not cards_for_dataframe_export:
-            progress(
-                1.0, desc="Card processing (formatting, etc.) resulted in no cards."
-            )
+        else:
+            progress(1.0, desc="🤖 Agent system returned no cards")
             return (
-                "Card processing resulted in no cards.",
+                "Agent system returned no cards",
                 pd.DataFrame().to_dict(orient="records"),
                 [],
             )
@@ -692,8 +629,8 @@ async def crawl_and_generate(
     return (
         final_message,
         cards_for_dataframe_export,
-        all_cards,
-    )  # all_cards is List[Card]
+        agent_cards,
+    )  # agent_cards is List[Card]
 
 
 # --- Card Preview and Editing Utilities (Task 13.3) ---

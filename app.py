@@ -1,51 +1,45 @@
 # Standard library imports
-import os
-from pathlib import Path  # Potentially for favicon_path
-from datetime import datetime
-import re
 import asyncio
+import os
+import re
+from datetime import datetime
+from pathlib import Path  # Potentially for favicon_path
 
 import gradio as gr
 import pandas as pd
 
-from ankigen_core.utils import (
-    get_logger,
-    ResponseCache,
-)  # fetch_webpage_text is used by card_generator
-
+from ankigen_core.card_generator import (
+    AVAILABLE_MODELS,
+    orchestrate_card_generation,
+)  # GENERATION_MODES is internal to card_generator
+from ankigen_core.exporters import (
+    export_dataframe_to_apkg,
+    export_dataframe_to_csv,
+)  # Anki models (BASIC_MODEL, CLOZE_MODEL) are internal to exporters
+from ankigen_core.learning_path import analyze_learning_path
 from ankigen_core.llm_interface import (
     OpenAIClientManager,
 )  # structured_output_completion is internal to core modules
-from ankigen_core.card_generator import (
-    orchestrate_card_generation,
-    AVAILABLE_MODELS,
-)  # GENERATION_MODES is internal to card_generator
-from ankigen_core.learning_path import analyze_learning_path
-from ankigen_core.exporters import (
-    export_dataframe_to_csv,
-    export_dataframe_to_apkg,
-)  # Anki models (BASIC_MODEL, CLOZE_MODEL) are internal to exporters
 from ankigen_core.ui_logic import (
+    crawl_and_generate,
+    create_crawler_main_mode_elements,
     update_mode_visibility,
     use_selected_subjects,
-    create_crawler_main_mode_elements,
-    crawl_and_generate,
 )
+from ankigen_core.utils import (
+    ResponseCache,
+    get_logger,
+)  # fetch_webpage_text is used by card_generator
 
 # --- Initialization ---
 logger = get_logger()
 response_cache = ResponseCache()  # Initialize cache
 client_manager = OpenAIClientManager()  # Initialize client manager
 
-# Check agent system availability
-try:
-    from ankigen_core.agents.feature_flags import get_feature_flags
+# Agent system is required
 
-    AGENTS_AVAILABLE_APP = True
-    logger.info("Agent system is available")
-except ImportError:
-    AGENTS_AVAILABLE_APP = False
-    logger.info("Agent system not available, using legacy generation only")
+AGENTS_AVAILABLE_APP = True
+logger.info("Agent system is available")
 
 js_storage = """
 async () => {
@@ -62,13 +56,17 @@ async () => {
 }
 """
 
-custom_theme = gr.themes.Soft().set(
-    body_background_fill="*background_fill_secondary",
-    block_background_fill="*background_fill_primary",
-    block_border_width="0",
-    button_primary_background_fill="*primary_500",
-    button_primary_text_color="white",
-)
+try:
+    custom_theme = gr.themes.Soft().set(  # type: ignore
+        body_background_fill="*background_fill_secondary",
+        block_background_fill="*background_fill_primary",
+        block_border_width="0",
+        button_primary_background_fill="*primary_500",
+        button_primary_text_color="white",
+    )
+except (AttributeError, ImportError):
+    # Fallback for older gradio versions or when themes are not available
+    custom_theme = None
 
 # --- Example Data for Initialization ---
 example_data = pd.DataFrame(
@@ -130,15 +128,16 @@ def get_recent_logs(logger_name="ankigen") -> str:
         log_file = os.path.join(log_dir, f"{logger_name}_{timestamp}.log")
 
         if os.path.exists(log_file):
-            with open(log_file, "r") as f:
+            with open(log_file) as f:
                 lines = f.readlines()
                 # Display last N lines, e.g., 100
                 return "\n".join(lines[-100:])  # Ensured this is standard newline
         return f"Log file for today ({log_file}) not found or is empty."
     except Exception as e:
-        # Use the main app logger to log this error, but don't let it crash the UI function
+        # Use the main app logger to log this error, but don't let it crash the UI
+        # function
         logger.error(f"Error reading logs: {e}", exc_info=True)
-        return f"Error reading logs: {str(e)}"
+        return f"Error reading logs: {e!s}"
 
 
 def create_ankigen_interface():
@@ -155,26 +154,26 @@ def create_ankigen_interface():
             .export-group > .gradio-group { margin-bottom: 0 !important; padding-bottom: 5px !important; }
 
             /* REMOVING CSS previously intended for DataFrame readability to ensure plain text */
-            /* 
-            .explanation-text { 
-                background: #f0fdf4; 
-                border-left: 3px solid #4ade80; 
+            /*
+            .explanation-text {
+                background: #f0fdf4;
+                border-left: 3px solid #4ade80;
                 padding: 0.5em;
                 margin-bottom: 0.5em;
                 border-radius: 4px;
             }
-            .example-text-plain { 
-                background: #fff7ed; 
-                border-left: 3px solid #f97316; 
+            .example-text-plain {
+                background: #fff7ed;
+                border-left: 3px solid #f97316;
                 padding: 0.5em;
                 margin-bottom: 0.5em;
                 border-radius: 4px;
             }
-            pre code { 
+            pre code {
                 display: block;
                 padding: 0.8em;
-                background: #1e293b; 
-                color: #e2e8f0;     
+                background: #1e293b;
+                color: #e2e8f0;
                 border-radius: 4px;
                 overflow-x: auto;
                 font-family: 'Fira Code', 'Consolas', monospace;
@@ -188,25 +187,6 @@ def create_ankigen_interface():
         with gr.Column(elem_classes="contain"):
             gr.Markdown("# 📚 AnkiGen - Advanced Anki Card Generator")
             gr.Markdown("#### Generate comprehensive Anki flashcards using AI.")
-
-            # Agent system status indicator
-            if AGENTS_AVAILABLE_APP:
-                try:
-                    feature_flags = get_feature_flags()
-                    if feature_flags.should_use_agents():
-                        agent_status_emoji = "🤖"
-                        agent_status_text = "**Agent System Active** - Enhanced quality with multi-agent pipeline"
-                    else:
-                        agent_status_emoji = "🔧"
-                        agent_status_text = "**Legacy Mode** - Set `ANKIGEN_AGENT_MODE=agent_only` to enable agents"
-                except Exception:
-                    agent_status_emoji = "⚙️"
-                    agent_status_text = "**Agent System Available** - Configure environment variables to activate"
-            else:
-                agent_status_emoji = "💡"
-                agent_status_text = "**Legacy Mode** - Agent system not installed"
-
-            gr.Markdown(f"{agent_status_emoji} {agent_status_text}")
 
             with gr.Accordion("Configuration Settings", open=True):
                 with gr.Row():
@@ -234,7 +214,8 @@ def create_ankigen_interface():
                                 lines=5,
                             )
                             analyze_button = gr.Button(
-                                "Analyze & Break Down", variant="secondary"
+                                "Analyze & Break Down",
+                                variant="secondary",
                             )
                         with gr.Group(visible=False) as text_mode:
                             source_text = gr.Textbox(
@@ -245,7 +226,7 @@ def create_ankigen_interface():
                         with gr.Group(visible=False) as web_mode:
                             # --- BEGIN INTEGRATED CRAWLER UI (Task 16) ---
                             logger.info(
-                                "Setting up integrated Web Crawler UI elements..."
+                                "Setting up integrated Web Crawler UI elements...",
                             )
                             (
                                 crawler_input_ui_elements,  # List of inputs like URL, depth, model, patterns
@@ -297,9 +278,10 @@ def create_ankigen_interface():
                                 value=default_model_value,
                                 label="Model Selection",
                                 info="Select AI model for generation",
+                                allow_custom_value=True,
                             )
                             _model_info = gr.Markdown(
-                                "**gpt-4.1**: Best quality | **gpt-4.1-nano**: Faster/Cheaper"
+                                "**gpt-4.1**: Best quality | **gpt-4.1-nano**: Faster/Cheaper",
                             )
                             topic_number = gr.Slider(
                                 label="Number of Topics",
@@ -329,6 +311,161 @@ def create_ankigen_interface():
                                 value=False,
                             )
 
+                            # Agent System Controls (simplified since we're agent-only)
+                            if AGENTS_AVAILABLE_APP:
+                                # Hidden dropdown for compatibility - always set to agent_only
+                                agent_mode_dropdown = gr.Dropdown(
+                                    choices=[("Agent Only", "agent_only")],
+                                    value="agent_only",
+                                    label="Agent Mode",
+                                    visible=False,
+                                )
+
+                                with gr.Accordion("Agent Configuration", open=False):
+                                    gr.Markdown("**Core Generation Pipeline**")
+                                    enable_subject_expert = gr.Checkbox(
+                                        label="Subject Expert Agent",
+                                        value=True,
+                                        info="Domain-specific expertise",
+                                    )
+                                    enable_generation_coordinator = gr.Checkbox(
+                                        label="Generation Coordinator",
+                                        value=True,
+                                        info="Orchestrates multi-agent generation",
+                                    )
+
+                                    gr.Markdown("**Quality Assurance**")
+                                    enable_content_judge = gr.Checkbox(
+                                        label="Content Accuracy Judge",
+                                        value=True,
+                                        info="Factual correctness validation",
+                                    )
+                                    enable_clarity_judge = gr.Checkbox(
+                                        label="Clarity Judge",
+                                        value=True,
+                                        info="Language clarity and comprehension",
+                                    )
+
+                                    gr.Markdown("**Optional Enhancements**")
+                                    enable_pedagogical_agent = gr.Checkbox(
+                                        label="Pedagogical Agent",
+                                        value=False,
+                                        info="Educational effectiveness review",
+                                    )
+                                    enable_pedagogical_judge = gr.Checkbox(
+                                        label="Pedagogical Judge",
+                                        value=False,
+                                        info="Learning theory compliance",
+                                    )
+                                    enable_enhancement_agent = gr.Checkbox(
+                                        label="Enhancement Agent",
+                                        value=False,
+                                        info="Content enrichment and metadata",
+                                    )
+
+                                    with gr.Accordion(
+                                        "🛠️ Agent Model Selection", open=False
+                                    ):
+                                        gr.Markdown("**Individual Agent Models**")
+
+                                        # Generator models
+                                        subject_expert_model = gr.Dropdown(
+                                            choices=model_choices_ui,
+                                            value="gpt-4.1",
+                                            label="Subject Expert Model",
+                                            info="Model for domain expertise",
+                                            allow_custom_value=True,
+                                        )
+                                        generation_coordinator_model = gr.Dropdown(
+                                            choices=model_choices_ui,
+                                            value="gpt-4.1-nano",
+                                            label="Generation Coordinator Model",
+                                            info="Model for orchestration",
+                                            allow_custom_value=True,
+                                        )
+
+                                        # Judge models
+                                        content_judge_model = gr.Dropdown(
+                                            choices=model_choices_ui,
+                                            value="gpt-4.1",
+                                            label="Content Accuracy Judge Model",
+                                            info="Model for fact-checking",
+                                            allow_custom_value=True,
+                                        )
+                                        clarity_judge_model = gr.Dropdown(
+                                            choices=model_choices_ui,
+                                            value="gpt-4.1-nano",
+                                            label="Clarity Judge Model",
+                                            info="Model for language clarity",
+                                            allow_custom_value=True,
+                                        )
+
+                                        # Enhancement models
+                                        pedagogical_agent_model = gr.Dropdown(
+                                            choices=model_choices_ui,
+                                            value="gpt-4.1",
+                                            label="Pedagogical Agent Model",
+                                            info="Model for educational theory",
+                                            allow_custom_value=True,
+                                        )
+                                        enhancement_agent_model = gr.Dropdown(
+                                            choices=model_choices_ui,
+                                            value="gpt-4.1",
+                                            label="Enhancement Agent Model",
+                                            info="Model for content enrichment",
+                                            allow_custom_value=True,
+                                        )
+                            else:
+                                # Placeholder when agents not available
+                                agent_mode_dropdown = gr.Dropdown(
+                                    choices=[("Legacy Only", "legacy")],
+                                    value="legacy",
+                                    label="Agent Mode",
+                                    info="Agent system not available",
+                                    interactive=False,
+                                )
+                                enable_subject_expert = gr.Checkbox(
+                                    value=False, visible=False
+                                )
+                                enable_generation_coordinator = gr.Checkbox(
+                                    value=False, visible=False
+                                )
+                                enable_pedagogical_agent = gr.Checkbox(
+                                    value=False, visible=False
+                                )
+                                enable_content_judge = gr.Checkbox(
+                                    value=False, visible=False
+                                )
+                                enable_clarity_judge = gr.Checkbox(
+                                    value=False, visible=False
+                                )
+                                enable_pedagogical_judge = gr.Checkbox(
+                                    value=False, visible=False
+                                )
+                                enable_enhancement_agent = gr.Checkbox(
+                                    value=False, visible=False
+                                )
+
+                                # Hidden model dropdowns for non-agent mode
+                                subject_expert_model = gr.Dropdown(
+                                    value="gpt-4.1", visible=False
+                                )
+                                generation_coordinator_model = gr.Dropdown(
+                                    value="gpt-4.1-nano", visible=False
+                                )
+                                content_judge_model = gr.Dropdown(
+                                    value="gpt-4.1", visible=False
+                                )
+                                clarity_judge_model = gr.Dropdown(
+                                    value="gpt-4.1-nano", visible=False
+                                )
+                                pedagogical_agent_model = gr.Dropdown(
+                                    value="gpt-4.1", visible=False
+                                )
+                                enhancement_agent_model = gr.Dropdown(
+                                    value="gpt-4.1", visible=False
+                                )
+
             generate_button = gr.Button("Generate Cards", variant="primary")
 
             with gr.Group(visible=False) as path_results:
@@ -350,7 +487,7 @@ def create_ankigen_interface():
                 gr.Markdown("### Generated Cards")
                 with gr.Accordion("Output Format", open=False):
                     gr.Markdown(
-                        "Cards: Index, Topic, Type, Q, A, Explanation, Example, Prerequisites, Outcomes, Misconceptions, Difficulty. Export: CSV, .apkg"
+                        "Cards: Index, Topic, Type, Q, A, Explanation, Example, Prerequisites, Outcomes, Misconceptions, Difficulty. Export: CSV, .apkg",
                     )
                     with gr.Accordion("Example Card Format", open=False):
                         gr.Code(
@@ -406,6 +543,12 @@ def create_ankigen_interface():
                 total_cards_html = gr.HTML(
                     value="<div><b>Total Cards Generated:</b> <span id='total-cards-count'>0</span></div>",
                     visible=False,
+                )
+
+                # Token usage display
+                token_usage_html = gr.HTML(
+                    value="<div style='margin-top: 8px;'><b>Token Usage:</b> <span id='token-usage-display'>No usage data</span></div>",
+                    visible=True,
                 )
 
                 # Export buttons
@@ -466,11 +609,11 @@ def create_ankigen_interface():
                     # to prevent a subsequent Gradio error about mismatched return values.
                     gr.Error(str(e))  # This will be shown in the UI.
                     empty_subjects_df = pd.DataFrame(
-                        columns=["Subject", "Prerequisites", "Time Estimate"]
+                        columns=["Subject", "Prerequisites", "Time Estimate"],
                     )
                     return (
                         gr.update(
-                            value=empty_subjects_df
+                            value=empty_subjects_df,
                         ),  # For subjects_list (DataFrame)
                         gr.update(value=""),  # For learning_order (Markdown)
                         gr.update(value=""),  # For projects (Markdown)
@@ -524,8 +667,96 @@ def create_ankigen_interface():
                 preference_prompt_val,
                 generate_cloze_checkbox_val,
                 llm_judge_checkbox_val,
+                agent_mode_val,
+                enable_subject_expert_val,
+                enable_generation_coordinator_val,
+                enable_pedagogical_agent_val,
+                enable_content_judge_val,
+                enable_clarity_judge_val,
+                enable_pedagogical_judge_val,
+                enable_enhancement_agent_val,
+                subject_expert_model_val,
+                generation_coordinator_model_val,
+                content_judge_model_val,
+                clarity_judge_model_val,
+                pedagogical_agent_model_val,
+                enhancement_agent_model_val,
                 progress=gr.Progress(track_tqdm=True),  # Added progress tracker
             ):
+                # Apply agent settings if agents are available
+                if AGENTS_AVAILABLE_APP:
+                    import os
+
+                    # Set agent mode
+                    os.environ["ANKIGEN_AGENT_MODE"] = agent_mode_val
+
+                    # Set individual agent flags (using correct environment variable names)
+                    os.environ["ANKIGEN_ENABLE_SUBJECT_EXPERT"] = str(
+                        enable_subject_expert_val
+                    ).lower()
+                    os.environ["ANKIGEN_ENABLE_GENERATION_COORDINATOR"] = str(
+                        enable_generation_coordinator_val
+                    ).lower()
+                    os.environ["ANKIGEN_ENABLE_PEDAGOGICAL_AGENT"] = str(
+                        enable_pedagogical_agent_val
+                    ).lower()
+                    os.environ["ANKIGEN_ENABLE_CONTENT_JUDGE"] = str(
+                        enable_content_judge_val
+                    ).lower()
+                    os.environ["ANKIGEN_ENABLE_CLARITY_JUDGE"] = str(
+                        enable_clarity_judge_val
+                    ).lower()
+                    os.environ["ANKIGEN_ENABLE_PEDAGOGICAL_JUDGE"] = str(
+                        enable_pedagogical_judge_val
+                    ).lower()
+                    os.environ["ANKIGEN_ENABLE_ENHANCEMENT_AGENT"] = str(
+                        enable_enhancement_agent_val
+                    ).lower()
+
+                    # Enable additional required flags for proper agent coordination
+                    os.environ["ANKIGEN_ENABLE_JUDGE_COORDINATOR"] = (
+                        "true"  # Required for judge coordination
+                    )
+                    os.environ["ANKIGEN_ENABLE_PARALLEL_JUDGING"] = (
+                        "true"  # Enable parallel judging for performance
+                    )
+
+                    # Configure agent models from UI selections
+                    model_overrides = {
+                        "subject_expert": subject_expert_model_val,
+                        "generation_coordinator": generation_coordinator_model_val,
+                        "content_accuracy_judge": content_judge_model_val,
+                        "clarity_judge": clarity_judge_model_val,
+                        "pedagogical_agent": pedagogical_agent_model_val,
+                        "enhancement_agent": enhancement_agent_model_val,
+                    }
+
+                    # Template variables for Jinja rendering
+                    template_vars = {
+                        "subject": subject_val or "general studies",
+                        "difficulty": "intermediate",  # Could be made configurable
+                        "topic": subject_val or "general concepts",
+                    }
+
+                    # Initialize config manager with model overrides and template variables
+                    from ankigen_core.agents.config import get_config_manager
+
+                    get_config_manager(model_overrides, template_vars)
+
+                    # Log the agent configuration
+                    logger.info(f"Agent mode set to: {agent_mode_val}")
+                    logger.info(f"Model overrides: {model_overrides}")
+                    logger.info(
+                        f"Active agents: Subject Expert={enable_subject_expert_val}, Generation Coordinator={enable_generation_coordinator_val}, Content Judge={enable_content_judge_val}, Clarity Judge={enable_clarity_judge_val}"
+                    )
+
+                    # Reload feature flags to pick up the new environment variables
+                    try:
+                        # Agent system is available
+                        logger.info("Agent system enabled")
+                    except Exception as e:
+                        logger.warning(f"Failed to reload feature flags: {e}")
+
                 # Recreate the partial function call, but now it can be awaited
                 # The actual orchestrate_card_generation is already partially applied with client_manager and response_cache
                 # So, we need to get that specific partial object if it's stored, or redefine the partial logic here.
@@ -545,6 +776,7 @@ def create_ankigen_interface():
                     generate_cloze_checkbox_val,
                     llm_judge_checkbox_val,
                 )
+                # Expect 3-tuple return (dataframe, total_cards_html, token_usage_html)
 
             generate_button.click(
                 fn=handle_generate_click,  # MODIFIED: Use the new async handler
@@ -560,8 +792,22 @@ def create_ankigen_interface():
                     preference_prompt,
                     generate_cloze_checkbox,
                     llm_judge_checkbox,
+                    agent_mode_dropdown,
+                    enable_subject_expert,
+                    enable_generation_coordinator,
+                    enable_pedagogical_agent,
+                    enable_content_judge,
+                    enable_clarity_judge,
+                    enable_pedagogical_judge,
+                    enable_enhancement_agent,
+                    subject_expert_model,
+                    generation_coordinator_model,
+                    content_judge_model,
+                    clarity_judge_model,
+                    pedagogical_agent_model,
+                    enhancement_agent_model,
                 ],
-                outputs=[output, total_cards_html],
+                outputs=[output, total_cards_html, token_usage_html],
                 show_progress="full",
             )
 
@@ -584,19 +830,19 @@ def create_ankigen_interface():
                     if exported_path_relative:
                         exported_path_absolute = os.path.abspath(exported_path_relative)
                         gr.Info(
-                            f"CSV ready for download: {os.path.basename(exported_path_absolute)}"
+                            f"CSV ready for download: {os.path.basename(exported_path_absolute)}",
                         )
                         return gr.update(value=exported_path_absolute, visible=True)
-                    else:
-                        # This case might happen if export_dataframe_to_csv itself had an internal issue
-                        # and returned None, though it typically raises an error or returns path.
-                        gr.Warning("CSV export failed or returned no path.")
-                        return gr.update(value=None, visible=False)
+                    # This case might happen if export_dataframe_to_csv itself had an internal issue
+                    # and returned None, though it typically raises an error or returns path.
+                    gr.Warning("CSV export failed or returned no path.")
+                    return gr.update(value=None, visible=False)
                 except Exception as e:
                     logger.error(
-                        f"Error exporting DataFrame to CSV: {e}", exc_info=True
+                        f"Error exporting DataFrame to CSV: {e}",
+                        exc_info=True,
                     )
-                    gr.Error(f"Failed to export to CSV: {str(e)}")
+                    gr.Error(f"Failed to export to CSV: {e!s}")
                     return gr.update(value=None, visible=False)
 
             export_csv_button.click(
@@ -608,7 +854,8 @@ def create_ankigen_interface():
 
             # Define handler for APKG export from DataFrame (Item 5)
             async def handle_export_dataframe_to_apkg_click(
-                df: pd.DataFrame, subject_for_deck_name: str
+                df: pd.DataFrame,
+                subject_for_deck_name: str,
             ):
                 if df is None or df.empty:
                     gr.Warning("No cards generated to export.")
@@ -621,13 +868,17 @@ def create_ankigen_interface():
                 )
                 if subject_for_deck_name and subject_for_deck_name.strip():
                     clean_subject = re.sub(
-                        r"[^a-zA-Z0-9\s_.-]", "", subject_for_deck_name.strip()
+                        r"[^a-zA-Z0-9\s_.-]",
+                        "",
+                        subject_for_deck_name.strip(),
                     )
                     deck_name_inside_anki = f"AnkiGen - {clean_subject}"
                 elif not df.empty and "Topic" in df.columns and df["Topic"].iloc[0]:
                     first_topic = df["Topic"].iloc[0]
                     clean_first_topic = re.sub(
-                        r"[^a-zA-Z0-9\s_.-]", "", str(first_topic).strip()
+                        r"[^a-zA-Z0-9\s_.-]",
+                        "",
+                        str(first_topic).strip(),
                     )
                     deck_name_inside_anki = f"AnkiGen - {clean_first_topic}"
                 else:
@@ -658,14 +909,15 @@ def create_ankigen_interface():
                     exported_path_absolute = os.path.abspath(exported_path_relative)
 
                     gr.Info(
-                        f"Successfully exported deck '{deck_name_inside_anki}' to {exported_path_absolute}"
+                        f"Successfully exported deck '{deck_name_inside_anki}' to {exported_path_absolute}",
                     )
                     return gr.update(value=exported_path_absolute, visible=True)
                 except Exception as e:
                     logger.error(
-                        f"Error exporting DataFrame to APKG: {e}", exc_info=True
+                        f"Error exporting DataFrame to APKG: {e}",
+                        exc_info=True,
                     )
-                    gr.Error(f"Failed to export to APKG: {str(e)}")
+                    gr.Error(f"Failed to export to APKG: {e!s}")
                     return gr.update(value=None, visible=False)
 
             # Wire button to handler (Item 6)
@@ -675,9 +927,6 @@ def create_ankigen_interface():
                 outputs=[download_file_output],
                 api_name="export_main_to_apkg",
             )
-
-            # --- CRAWLER EVENT HANDLER (Task 16) ---
-            # This handler is for the new "Crawl Content & Prepare Cards" button within web_mode
 
             async def handle_web_crawl_click(
                 api_key_val: str,
@@ -696,7 +945,7 @@ def create_ankigen_interface():
                 progress(0, desc="Initializing web crawl...")
                 yield {
                     web_crawl_status_textbox: gr.update(
-                        value="Initializing web crawl..."
+                        value="Initializing web crawl...",
                     ),
                     output: gr.update(value=None),  # Clear main output table
                     total_cards_html: gr.update(
@@ -709,7 +958,7 @@ def create_ankigen_interface():
                     logger.error("API Key is missing for web crawler operation.")
                     yield {
                         web_crawl_status_textbox: gr.update(
-                            value="Error: OpenAI API Key is required."
+                            value="Error: OpenAI API Key is required.",
                         ),
                     }
                     return
@@ -722,7 +971,7 @@ def create_ankigen_interface():
                     )
                     yield {
                         web_crawl_status_textbox: gr.update(
-                            value=f"Error: Client init failed: {str(e)}"
+                            value=f"Error: Client init failed: {e!s}",
                         ),
                     }
                     return
@@ -761,7 +1010,7 @@ def create_ankigen_interface():
                                 col in preview_df_value.columns for col in expected_cols
                             ):
                                 logger.warning(
-                                    "Crawled card data columns mismatch main output, attempting to use available data."
+                                    "Crawled card data columns mismatch main output, attempting to use available data.",
                                 )
                                 # Potentially select only common columns or reindex if necessary
                                 # For now, we'll pass it as is, Gradio might handle extra/missing cols gracefully or error.
@@ -773,7 +1022,8 @@ def create_ankigen_interface():
                             web_crawl_status_textbox: gr.update(value=message),
                             output: gr.update(value=preview_df_value),
                             total_cards_html: gr.update(
-                                visible=True, value=total_cards_update
+                                visible=True,
+                                value=total_cards_update,
                             ),
                         }
                     except Exception as e:
@@ -783,7 +1033,7 @@ def create_ankigen_interface():
                         )
                         yield {
                             web_crawl_status_textbox: gr.update(
-                                value=f"{message} (Error displaying cards: {str(e)})"
+                                value=f"{message} (Error displaying cards: {e!s})",
                             ),
                             output: gr.update(value=None),
                             total_cards_html: gr.update(visible=False),
@@ -791,35 +1041,11 @@ def create_ankigen_interface():
                 else:
                     yield {
                         web_crawl_status_textbox: gr.update(
-                            value=message
+                            value=message,
                         ),  # Message from crawl_and_generate (e.g. no cards)
                         output: gr.update(value=None),
                         total_cards_html: gr.update(visible=False),
                     }
-
-            # Wire the new crawl button
-            # Need to get the actual UI components from crawler_input_ui_elements by index or name
-            # Assuming create_crawler_main_mode_elements returns them in a predictable order in the list
-            # or returns them individually. The Tuple return is better.
-
-            # crawler_input_ui_elements[0] is url_input
-            # crawler_input_ui_elements[1] is max_depth_slider
-            # crawler_input_ui_elements[2] is crawler_req_per_sec_slider
-            # crawler_input_ui_elements[3] is model_dropdown
-            # crawler_input_ui_elements[4] is include_patterns_textbox
-            # crawler_input_ui_elements[5] is exclude_patterns_textbox
-
-            # The other components are returned individually:
-            # web_crawl_custom_system_prompt, web_crawl_custom_user_prompt_template,
-            # web_crawl_use_sitemap_checkbox, web_crawl_sitemap_url_textbox
-
-            # Already unpacked above:
-            # web_crawl_url_input = crawler_input_ui_elements[0]
-            # web_crawl_max_depth_slider = crawler_input_ui_elements[1]
-            # web_crawl_req_per_sec_slider = crawler_input_ui_elements[2]
-            # web_crawl_model_dropdown = crawler_input_ui_elements[3] # model for LLM processing
-            # web_crawl_include_patterns_textbox = crawler_input_ui_elements[4]
-            # web_crawl_exclude_patterns_textbox = crawler_input_ui_elements[5]
 
             web_crawl_button.click(
                 fn=handle_web_crawl_click,
@@ -859,7 +1085,7 @@ if __name__ == "__main__":
             ankigen_interface.launch(share=False, favicon_path=str(favicon_path))
         else:
             logger.warning(
-                f"Favicon not found at {favicon_path}, launching without it."
+                f"Favicon not found at {favicon_path}, launching without it.",
             )
             ankigen_interface.launch(share=False)
     except Exception as e:

@@ -80,35 +80,35 @@ BASIC_MODEL = genanki.Model(
                         </div>
                     </div>
                     <hr>
-                    
+
                     <div class=\"answer-section\">
                         <h3>Answer</h3>
                         <div class=\"answer\">{{Answer}}</div>
                     </div>
-                    
+
                     <div class=\"explanation-section\">
                         <h3>Explanation</h3>
                         <div class=\"explanation-text\">{{Explanation}}</div>
                     </div>
-                    
+
                     <div class=\"example-section\">
                         <h3>Example</h3>
-                        <div class=\"example-text\">{{Example}}</div> 
+                        <div class=\"example-text\">{{Example}}</div>
                         <!-- Example field might contain pre/code or plain text -->
                         <!-- Handled by how HTML is put into the Example field -->
                     </div>
-                    
+
                     <div class=\"metadata-section\">
                         <div class=\"learning-outcomes\">
                             <h3>Learning Outcomes</h3>
                             <div>{{Learning_Outcomes}}</div>
                         </div>
-                        
+
                         <div class=\"misconceptions\">
                             <h3>Common Misconceptions - Debunked</h3>
                             <div>{{Common_Misconceptions}}</div>
                         </div>
-                        
+
                         <div class=\"difficulty\">
                             <h3>Difficulty Level</h3>
                             <div>{{Difficulty}}</div>
@@ -132,20 +132,20 @@ BASIC_MODEL = genanki.Model(
             padding: 20px;
             background: #ffffff;
         }
-        
+
         @media (max-width: 768px) {
             .card {
                 font-size: 14px;
                 padding: 15px;
             }
         }
-        
+
         /* Question side */
         .question-side {
             position: relative;
             min-height: 200px;
         }
-        
+
         .difficulty-indicator {
             position: absolute;
             top: 10px;
@@ -154,30 +154,30 @@ BASIC_MODEL = genanki.Model(
             height: 10px;
             border-radius: 50%;
         }
-        
+
         .difficulty-indicator.beginner { background: #4ade80; }
         .difficulty-indicator.intermediate { background: #fbbf24; }
         .difficulty-indicator.advanced { background: #ef4444; }
-        
+
         .question {
             font-size: 1.3em;
             font-weight: 600;
             color: #2563eb;
             margin-bottom: 1.5em;
         }
-        
+
         .prerequisites {
             margin-top: 1em;
             font-size: 0.9em;
             color: #666;
         }
-        
+
         .prerequisites-toggle {
             color: #2563eb;
             cursor: pointer;
             text-decoration: underline;
         }
-        
+
         .prerequisites-content {
             display: none;
             margin-top: 0.5em;
@@ -185,11 +185,11 @@ BASIC_MODEL = genanki.Model(
             background: #f8fafc;
             border-radius: 4px;
         }
-        
+
         .prerequisites.show .prerequisites-content {
             display: block;
         }
-        
+
         /* Answer side */
         .answer-section,
         .explanation-section,
@@ -199,17 +199,17 @@ BASIC_MODEL = genanki.Model(
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
-        
+
         .answer-section {
             background: #f0f9ff;
             border-left: 4px solid #2563eb;
         }
-        
+
         .explanation-section {
             background: #f0fdf4;
             border-left: 4px solid #4ade80;
         }
-        
+
         .example-section {
             background: #fefce8; /* Light yellow */
             border-left: 4px solid #facc15; /* Yellow */
@@ -228,7 +228,7 @@ BASIC_MODEL = genanki.Model(
         .example-section code {
              font-family: 'Consolas', 'Monaco', 'Menlo', monospace;
         }
-        
+
         .metadata-section {
             margin-top: 2em;
             padding-top: 1em;
@@ -236,13 +236,13 @@ BASIC_MODEL = genanki.Model(
             font-size: 0.9em;
             color: #4b5563; /* Cool gray */
         }
-        
+
         .metadata-section h3 {
             font-size: 1em;
             color: #1f2937; /* Darker gray for headings */
             margin-bottom: 0.5em;
         }
-        
+
         .metadata-section > div {
             margin-bottom: 0.8em;
         }
@@ -254,7 +254,7 @@ BASIC_MODEL = genanki.Model(
         .source-url a:hover {
             text-decoration: underline;
         }
-        
+
         /* Styles for cloze deletion cards */
         .cloze {
             font-weight: bold;
@@ -263,14 +263,14 @@ BASIC_MODEL = genanki.Model(
         .nightMode .cloze {
             color: lightblue;
         }
-        
+
         /* General utility */
         hr {
             border: none;
             border-top: 1px dashed #cbd5e1; /* Light dashed line */
             margin: 1.5em 0;
         }
-        
+
         /* Rich text field styling (if Anki adds classes for these) */
         .field ul, .field ol {
             margin-left: 1.5em;
@@ -289,13 +289,13 @@ BASIC_MODEL = genanki.Model(
                 margin: 1em 0;
             }
         }
-        
+
         /* Animations */
         @keyframes fadeIn {
             from { opacity: 0; }
             to { opacity: 1; }
         }
-        
+
         .card {
             animation: fadeIn 0.3s ease-in-out;
         }
@@ -350,35 +350,35 @@ CLOZE_MODEL = genanki.Model(
                         </div>
                     </div>
                     <hr>
-                    
+
                     {{#Back Extra}}
                     <div class=\"back-extra-section\">
                         <h3>Additional Information</h3>
                         <div class=\"back-extra-text\">{{Back Extra}}</div>
                     </div>
                     {{/Back Extra}}
-                    
+
                     <div class=\"explanation-section\">
                         <h3>Explanation</h3>
                         <div class=\"explanation-text\">{{Explanation}}</div>
                     </div>
-                    
+
                     <div class=\"example-section\">
                         <h3>Example</h3>
                         <div class=\"example-text\">{{Example}}</div>
                     </div>
-                    
+
                     <div class=\"metadata-section\">
                         <div class=\"learning-outcomes\">
                             <h3>Learning Outcomes</h3>
                             <div>{{Learning_Outcomes}}</div>
                         </div>
-                        
+
                         <div class=\"misconceptions\">
                             <h3>Common Misconceptions - Debunked</h3>
                             <div>{{Common_Misconceptions}}</div>
                         </div>
-                        
+
                         <div class=\"difficulty\">
                             <h3>Difficulty Level</h3>
                             <div>{{Difficulty}}</div>
@@ -402,20 +402,20 @@ CLOZE_MODEL = genanki.Model(
             padding: 20px;
             background: #ffffff;
         }
-        
+
         @media (max-width: 768px) {
             .card {
                 font-size: 14px;
                 padding: 15px;
             }
         }
-        
+
         /* Question side */
         .question-side {
             position: relative;
             min-height: 200px;
         }
-        
+
         .difficulty-indicator {
             position: absolute;
             top: 10px;
@@ -424,30 +424,30 @@ CLOZE_MODEL = genanki.Model(
             height: 10px;
             border-radius: 50%;
         }
-        
+
         .difficulty-indicator.beginner { background: #4ade80; }
         .difficulty-indicator.intermediate { background: #fbbf24; }
         .difficulty-indicator.advanced { background: #ef4444; }
-        
+
         .question {
             font-size: 1.3em;
             font-weight: 600;
             color: #2563eb;
             margin-bottom: 1.5em;
         }
-        
+
         .prerequisites {
             margin-top: 1em;
             font-size: 0.9em;
             color: #666;
         }
-        
+
         .prerequisites-toggle {
             color: #2563eb;
             cursor: pointer;
             text-decoration: underline;
         }
-        
+
         .prerequisites-content {
             display: none;
             margin-top: 0.5em;
@@ -455,11 +455,11 @@ CLOZE_MODEL = genanki.Model(
             background: #f8fafc;
             border-radius: 4px;
         }
-        
+
         .prerequisites.show .prerequisites-content {
             display: block;
         }
-        
+
         /* Answer side */
         .answer-section,
         .explanation-section,
@@ -469,7 +469,7 @@ CLOZE_MODEL = genanki.Model(
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
-        
+
         .answer-section { /* Shared with question for cloze, but can be general */
             background: #f0f9ff;
             border-left: 4px solid #2563eb;
@@ -483,7 +483,7 @@ CLOZE_MODEL = genanki.Model(
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
-        
+
         .explanation-section {
             background: #f0fdf4;
             border-left: 4px solid #4ade80;
@@ -507,7 +507,7 @@ CLOZE_MODEL = genanki.Model(
         .example-section code {
              font-family: 'Consolas', 'Monaco', 'Menlo', monospace;
         }
-        
+
         .metadata-section {
             margin-top: 2em;
             padding-top: 1em;
@@ -515,13 +515,13 @@ CLOZE_MODEL = genanki.Model(
             font-size: 0.9em;
             color: #4b5563; /* Cool gray */
         }
-        
+
         .metadata-section h3 {
             font-size: 1em;
             color: #1f2937; /* Darker gray for headings */
             margin-bottom: 0.5em;
         }
-        
+
         .metadata-section > div {
             margin-bottom: 0.8em;
         }
@@ -533,7 +533,7 @@ CLOZE_MODEL = genanki.Model(
         .source-url a:hover {
             text-decoration: underline;
         }
-        
+
         /* Styles for cloze deletion cards */
         .cloze {
             font-weight: bold;
@@ -542,14 +542,14 @@ CLOZE_MODEL = genanki.Model(
         .nightMode .cloze {
             color: lightblue;
         }
-        
+
         /* General utility */
         hr {
             border: none;
             border-top: 1px dashed #cbd5e1; /* Light dashed line */
             margin: 1.5em 0;
         }
-        
+
         /* Rich text field styling (if Anki adds classes for these) */
         .field ul, .field ol {
             margin-left: 1.5em;

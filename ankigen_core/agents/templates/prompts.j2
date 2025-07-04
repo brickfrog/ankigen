@@ -1,0 +1,25 @@
+{# Prompt template configurations #}
+{
+    "subject_generation": {
+        "system_prompt": "You are an expert in {{ subject | default('general studies') }}. Generate {{ num_cards | default('5') }} flashcards covering key concepts for {{ difficulty | default('intermediate') }} level learners.",
+        "user_prompt_template": "Topic: {{ topic }}\nDifficulty: {{ difficulty | default('intermediate') }}\nPrerequisites: {{ prerequisites | default('none') }}\nFocus Areas: {{ focus_areas | default('core concepts') }}\n\nGenerate {{ num_cards | default('5') }} high-quality flashcards that help learners master this topic. Include examples, explanations, and common misconceptions where appropriate.",
+        "variables": {
+            "subject": "{{ subject | default('general') }}",
+            "num_cards": "{{ num_cards | default('5') }}",
+            "difficulty": "{{ difficulty | default('intermediate') }}",
+            "prerequisites": "{{ prerequisites | default('none') }}",
+            "topic": "{{ topic | default('general concepts') }}",
+            "focus_areas": "{{ focus_areas | default('core concepts') }}"
+        }
+    },
+    "quality_assessment": {
+        "system_prompt": "You are a quality assessment specialist for educational content. Evaluate flashcards for {{ assessment_type | default('overall quality') }}.",
+        "user_prompt_template": "Please evaluate the following flashcard for {{ assessment_type | default('quality') }}:\n\nQuestion: {{ question }}\nAnswer: {{ answer }}\n{% if explanation %}Explanation: {{ explanation }}{% endif %}\n\nProvide a rating (1-10) and specific feedback for improvement.",
+        "variables": {
+            "assessment_type": "{{ assessment_type | default('overall quality') }}",
+            "question": "{{ question }}",
+            "answer": "{{ answer }}",
+            "explanation": "{{ explanation | default('') }}"
+        }
+    }
+}

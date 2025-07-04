@@ -4,11 +4,30 @@ from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 from pydantic import BaseModel
 import asyncio
-import time
+import json
 from openai import AsyncOpenAI
-from agents import Agent, Runner
+from agents import Agent, Runner, ModelSettings
 
 from ankigen_core.logging import logger
+from .token_tracker import track_usage_from_agents_sdk
+
+
+def parse_agent_json_response(response: Any) -> Dict[str, Any]:
+    """Parse agent response, handling markdown code blocks if present"""
+    if isinstance(response, str):
+        # Strip markdown code blocks
+        response = response.strip()
+        if response.startswith("```json"):
+            response = response[7:]  # Remove ```json
+        if response.startswith("```"):
+            response = response[3:]  # Remove ```
+        if response.endswith("```"):
+            response = response[:-3]  # Remove trailing ```
+        response = response.strip()
+
+        return json.loads(response)
+    else:
+        return response
 
 
 @dataclass
@@ -17,13 +36,14 @@ class AgentConfig:
 
     name: str
     instructions: str
-    model: str = "gpt-4o"
+    model: str = "gpt-4.1"
     temperature: float = 0.7
     max_tokens: Optional[int] = None
     timeout: float = 30.0
     retry_attempts: int = 3
     enable_tracing: bool = True
     custom_prompts: Optional[Dict[str, str]] = None
+    output_type: Optional[type] = None  # For structured outputs
 
     def __post_init__(self):
         if self.custom_prompts is None:
@@ -38,42 +58,49 @@ class BaseAgentWrapper:
         self.openai_client = openai_client
         self.agent = None
         self.runner = None
-        self._performance_metrics = {
-            "total_calls": 0,
-            "successful_calls": 0,
-            "average_response_time": 0.0,
-            "error_count": 0,
-        }
 
     async def initialize(self):
-        """Initialize the OpenAI agent"""
+        """Initialize the OpenAI agent with structured output support"""
         try:
-            self.agent = Agent(
-                name=self.config.name,
-                instructions=self.config.instructions,
-                model=self.config.model,
-                temperature=self.config.temperature,
-            )
+            # Create model settings with temperature
+            model_settings = ModelSettings(temperature=self.config.temperature)
 
-            # Initialize runner with the OpenAI client
-            self.runner = Runner(
-                agent=self.agent,
-                client=self.openai_client,
-            )
+            # Use clean instructions without JSON formatting hacks
+            clean_instructions = self.config.instructions
 
-            logger.info(f"Initialized agent: {self.config.name}")
+            # Create agent with structured output if output_type is provided
+            if self.config.output_type:
+                self.agent = Agent(
+                    name=self.config.name,
+                    instructions=clean_instructions,
+                    model=self.config.model,
+                    model_settings=model_settings,
+                    output_type=self.config.output_type,
+                )
+                logger.info(
+                    f"Initialized agent with structured output: {self.config.name} -> {self.config.output_type}"
+                )
+            else:
+                self.agent = Agent(
+                    name=self.config.name,
+                    instructions=clean_instructions,
+                    model=self.config.model,
+                    model_settings=model_settings,
+                )
+                logger.info(
+                    f"Initialized agent (no structured output): {self.config.name}"
+                )
 
         except Exception as e:
             logger.error(f"Failed to initialize agent {self.config.name}: {e}")
             raise
 
-    async def execute(self, user_input: str, context: Dict[str, Any] = None) -> Any:
+    async def execute(
+        self, user_input: str, context: Optional[Dict[str, Any]] = None
+    ) -> tuple[Any, Dict[str, Any]]:
         """Execute the agent with user input and optional context"""
-        if not self.runner:
+        if not self.agent:
             await self.initialize()
-
-        start_time = time.time()
-        self._performance_metrics["total_calls"] += 1
 
         try:
             # Add context to the user input if provided
@@ -82,95 +109,70 @@ class BaseAgentWrapper:
                 context_str = "\n".join([f"{k}: {v}" for k, v in context.items()])
                 enhanced_input = f"{user_input}\n\nContext:\n{context_str}"
 
-            # Execute the agent
+            # Execute the agent using Runner.run()
+            if self.agent is None:
+                raise ValueError("Agent not initialized")
+
+            logger.info(f"🤖 EXECUTING AGENT: {self.config.name}")
+            logger.info(f"📝 INPUT: {enhanced_input[:200]}...")
+
             result = await asyncio.wait_for(
-                self._run_agent(enhanced_input), timeout=self.config.timeout
+                Runner.run(
+                    starting_agent=self.agent,
+                    input=enhanced_input,
+                ),
+                timeout=self.config.timeout,
             )
 
-            # Update metrics
-            response_time = time.time() - start_time
-            self._update_performance_metrics(response_time, success=True)
+            logger.info(f"Agent {self.config.name} executed successfully")
 
-            logger.debug(
-                f"Agent {self.config.name} executed successfully in {response_time:.2f}s"
-            )
-            return result
+            # Extract usage information from raw_responses
+            total_usage = {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0,
+                "requests": 0,
+            }
+
+            if hasattr(result, "raw_responses") and result.raw_responses:
+                for response in result.raw_responses:
+                    if hasattr(response, "usage") and response.usage:
+                        total_usage["input_tokens"] += response.usage.input_tokens
+                        total_usage["output_tokens"] += response.usage.output_tokens
+                        total_usage["total_tokens"] += response.usage.total_tokens
+                        total_usage["requests"] += response.usage.requests
+
+                # Track usage with the token tracker
+                track_usage_from_agents_sdk(total_usage, self.config.model)
+                logger.info(f"💰 AGENT USAGE: {total_usage}")
+
+            # Extract the final output from the result
+            if hasattr(result, "new_items") and result.new_items:
+                # Get the last message content
+                from agents.items import ItemHelpers
+
+                text_output = ItemHelpers.text_message_outputs(result.new_items)
+
+                # If we have structured output, the response should already be parsed
+                if self.config.output_type and self.config.output_type is not str:
+                    logger.info(
+                        f"✅ STRUCTURED OUTPUT: {type(text_output)} -> {self.config.output_type}"
+                    )
+                    # The agents SDK should return the structured object directly
+                    return text_output, total_usage
+                else:
+                    return text_output, total_usage
+            else:
+                return str(result), total_usage
 
         except asyncio.TimeoutError:
-            self._performance_metrics["error_count"] += 1
             logger.error(
                 f"Agent {self.config.name} timed out after {self.config.timeout}s"
             )
             raise
         except Exception as e:
-            self._performance_metrics["error_count"] += 1
             logger.error(f"Agent {self.config.name} execution failed: {e}")
             raise
-
-    async def _run_agent(self, input_text: str) -> Any:
-        """Run the agent with retry logic"""
-        last_exception = None
-
-        for attempt in range(self.config.retry_attempts):
-            try:
-                # Create a new run
-                run = await self.runner.create_run(
-                    messages=[{"role": "user", "content": input_text}]
-                )
-
-                # Wait for completion
-                while run.status in ["queued", "in_progress"]:
-                    await asyncio.sleep(0.1)
-                    run = await self.runner.get_run(run.id)
-
-                if run.status == "completed":
-                    # Get the final message
-                    messages = await self.runner.get_messages(run.thread_id)
-                    if messages and messages[-1].role == "assistant":
-                        return messages[-1].content
-                    else:
-                        raise ValueError("No assistant response found")
-                else:
-                    raise ValueError(f"Run failed with status: {run.status}")
-
-            except Exception as e:
-                last_exception = e
-                if attempt < self.config.retry_attempts - 1:
-                    wait_time = 2**attempt
-                    logger.warning(
-                        f"Agent {self.config.name} attempt {attempt + 1} failed, retrying in {wait_time}s: {e}"
-                    )
-                    await asyncio.sleep(wait_time)
-                else:
-                    logger.error(
-                        f"Agent {self.config.name} failed after {self.config.retry_attempts} attempts"
-                    )
-
-        raise last_exception
-
-    def _update_performance_metrics(self, response_time: float, success: bool):
-        """Update performance metrics"""
-        if success:
-            self._performance_metrics["successful_calls"] += 1
-
-        # Update average response time
-        total_successful = self._performance_metrics["successful_calls"]
-        if total_successful > 0:
-            current_avg = self._performance_metrics["average_response_time"]
-            self._performance_metrics["average_response_time"] = (
-                current_avg * (total_successful - 1) + response_time
-            ) / total_successful
-
-    def get_performance_metrics(self) -> Dict[str, Any]:
-        """Get performance metrics for this agent"""
-        return {
-            **self._performance_metrics,
-            "success_rate": (
-                self._performance_metrics["successful_calls"]
-                / max(1, self._performance_metrics["total_calls"])
-            ),
-            "agent_name": self.config.name,
-        }
 
     async def handoff_to(
         self, target_agent: "BaseAgentWrapper", context: Dict[str, Any]
@@ -199,6 +201,5 @@ class AgentResponse(BaseModel):
     success: bool
     data: Any
     agent_name: str
-    execution_time: float
     metadata: Dict[str, Any] = {}
     errors: List[str] = []

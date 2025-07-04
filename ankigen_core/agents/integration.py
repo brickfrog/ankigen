@@ -1,6 +1,5 @@
 # Main integration module for AnkiGen agent system
 
-import asyncio
 from typing import List, Dict, Any, Tuple
 from datetime import datetime
 
@@ -9,11 +8,9 @@ from ankigen_core.logging import logger
 from ankigen_core.models import Card
 from ankigen_core.llm_interface import OpenAIClientManager
 
-from .feature_flags import get_feature_flags
 from .generators import GenerationCoordinator, SubjectExpertAgent
 from .judges import JudgeCoordinator
 from .enhancers import RevisionAgent, EnhancementAgent
-from .metrics import get_metrics, record_agent_execution
 
 
 class AgentOrchestrator:
@@ -29,31 +26,31 @@ class AgentOrchestrator:
         self.revision_agent = None
         self.enhancement_agent = None
 
-        # Feature flags
-        self.feature_flags = get_feature_flags()
+        # All agents enabled by default
+        self.all_agents_enabled = True
 
-    async def initialize(self, api_key: str):
+    async def initialize(self, api_key: str, model_overrides: Dict[str, str] = None):
         """Initialize the agent system"""
         try:
             # Initialize OpenAI client
             await self.client_manager.initialize_client(api_key)
             self.openai_client = self.client_manager.get_client()
 
-            # Initialize agents based on feature flags
-            if self.feature_flags.enable_generation_coordinator:
-                self.generation_coordinator = GenerationCoordinator(self.openai_client)
+            # Set up model overrides if provided
+            if model_overrides:
+                from ankigen_core.agents.config import get_config_manager
 
-            if self.feature_flags.enable_judge_coordinator:
-                self.judge_coordinator = JudgeCoordinator(self.openai_client)
+                config_manager = get_config_manager()
+                config_manager.update_models(model_overrides)
+                logger.info(f"Applied model overrides: {model_overrides}")
 
-            if self.feature_flags.enable_revision_agent:
-                self.revision_agent = RevisionAgent(self.openai_client)
-
-            if self.feature_flags.enable_enhancement_agent:
-                self.enhancement_agent = EnhancementAgent(self.openai_client)
+            # Initialize all agents
+            self.generation_coordinator = GenerationCoordinator(self.openai_client)
+            self.judge_coordinator = JudgeCoordinator(self.openai_client)
+            self.revision_agent = RevisionAgent(self.openai_client)
+            self.enhancement_agent = EnhancementAgent(self.openai_client)
 
             logger.info("Agent system initialized successfully")
-            logger.info(f"Active agents: {self.feature_flags.get_enabled_agents()}")
 
         except Exception as e:
             logger.error(f"Failed to initialize agent system: {e}")
@@ -72,9 +69,7 @@ class AgentOrchestrator:
         start_time = datetime.now()
 
         try:
-            # Check if agents should be used
-            if not self.feature_flags.should_use_agents():
-                raise ValueError("Agent mode not enabled")
+            # Agents are always enabled now
 
             if not self.openai_client:
                 raise ValueError("Agent system not initialized")
@@ -90,19 +85,18 @@ class AgentOrchestrator:
                 context=context,
             )
 
-            # Phase 2: Quality Assessment (optional)
+            # Phase 2: Quality Assessment
             quality_results = {}
-            if enable_quality_pipeline and self.feature_flags.enable_judge_coordinator:
+            if enable_quality_pipeline and self.judge_coordinator:
                 cards, quality_results = await self._quality_phase(cards)
 
-            # Phase 3: Enhancement (optional)
-            if self.feature_flags.enable_enhancement_agent and self.enhancement_agent:
+            # Phase 3: Enhancement
+            if self.enhancement_agent:
                 cards = await self._enhancement_phase(cards)
 
             # Collect metadata
             metadata = {
                 "generation_method": "agent_system",
-                "agents_used": self.feature_flags.get_enabled_agents(),
                 "generation_time": (datetime.now() - start_time).total_seconds(),
                 "cards_generated": len(cards),
                 "quality_results": quality_results,
@@ -111,30 +105,12 @@ class AgentOrchestrator:
                 "difficulty": difficulty,
             }
 
-            # Record overall execution
-            record_agent_execution(
-                agent_name="agent_orchestrator",
-                start_time=start_time,
-                end_time=datetime.now(),
-                success=True,
-                metadata=metadata,
-            )
-
             logger.info(
                 f"Agent-based generation complete: {len(cards)} cards generated"
             )
             return cards, metadata
 
         except Exception as e:
-            record_agent_execution(
-                agent_name="agent_orchestrator",
-                start_time=start_time,
-                end_time=datetime.now(),
-                success=False,
-                error_message=str(e),
-                metadata={"topic": topic, "subject": subject},
-            )
-
             logger.error(f"Agent-based generation failed: {e}")
             raise
 
@@ -148,29 +124,23 @@ class AgentOrchestrator:
     ) -> List[Card]:
         """Execute the card generation phase"""
 
-        if (
-            self.generation_coordinator
-            and self.feature_flags.enable_generation_coordinator
-        ):
+        if self.generation_coordinator:
             # Use coordinated multi-agent generation
             cards = await self.generation_coordinator.coordinate_generation(
                 topic=topic,
                 subject=subject,
                 num_cards=num_cards,
                 difficulty=difficulty,
-                enable_review=self.feature_flags.enable_pedagogical_agent,
-                enable_structuring=self.feature_flags.enable_content_structuring_agent,
+                enable_review=True,
+                enable_structuring=True,
                 context=context,
             )
-        elif self.feature_flags.enable_subject_expert_agent:
+        else:
             # Use subject expert agent directly
             subject_expert = SubjectExpertAgent(self.openai_client, subject)
             cards = await subject_expert.generate_cards(
                 topic=topic, num_cards=num_cards, difficulty=difficulty, context=context
             )
-        else:
-            # Fallback to legacy generation (would be implemented separately)
-            raise ValueError("No generation agents enabled")
 
         logger.info(f"Generation phase complete: {len(cards)} cards generated")
         return cards
@@ -188,8 +158,8 @@ class AgentOrchestrator:
         # Judge all cards
         judge_results = await self.judge_coordinator.coordinate_judgment(
             cards=cards,
-            enable_parallel=self.feature_flags.enable_parallel_judging,
-            min_consensus=self.feature_flags.min_judge_consensus,
+            enable_parallel=True,
+            min_consensus=0.6,
         )
 
         # Separate approved and rejected cards
@@ -212,25 +182,22 @@ class AgentOrchestrator:
                     revised_card = await self.revision_agent.revise_card(
                         card=card,
                         judge_decisions=decisions,
-                        max_iterations=self.feature_flags.max_revision_iterations,
+                        max_iterations=2,
                     )
 
                     # Re-judge the revised card
-                    if self.feature_flags.enable_parallel_judging:
-                        revision_results = await self.judge_coordinator.coordinate_judgment(
-                            cards=[revised_card],
-                            enable_parallel=False,  # Single card, no need for parallel
-                            min_consensus=self.feature_flags.min_judge_consensus,
-                        )
+                    revision_results = await self.judge_coordinator.coordinate_judgment(
+                        cards=[revised_card],
+                        enable_parallel=False,  # Single card, no need for parallel
+                        min_consensus=0.6,
+                    )
 
-                        if revision_results and revision_results[0][2]:  # If approved
-                            revised_cards.append(revised_card)
-                        else:
-                            logger.warning(
-                                f"Revised card still rejected: {card.front.question[:50]}..."
-                            )
-                    else:
+                    if revision_results and revision_results[0][2]:  # If approved
                         revised_cards.append(revised_card)
+                    else:
+                        logger.warning(
+                            f"Revised card still rejected: {card.front.question[:50]}..."
+                        )
 
                 except Exception as e:
                     logger.error(f"Failed to revise card: {e}")
@@ -270,13 +237,10 @@ class AgentOrchestrator:
 
     def get_performance_metrics(self) -> Dict[str, Any]:
         """Get performance metrics for the agent system"""
-        metrics = get_metrics()
 
+        # Basic performance info only
         return {
-            "agent_performance": metrics.get_performance_report(hours=24),
-            "quality_metrics": metrics.get_quality_metrics(),
-            "feature_flags": self.feature_flags.to_dict(),
-            "enabled_agents": self.feature_flags.get_enabled_agents(),
+            "agents_enabled": True,
         }
 
 
@@ -285,13 +249,7 @@ async def integrate_with_existing_workflow(
 ) -> Tuple[List[Card], Dict[str, Any]]:
     """Integration point for existing AnkiGen workflow"""
 
-    feature_flags = get_feature_flags()
-
-    # Check if agents should be used
-    if not feature_flags.should_use_agents():
-        logger.info("Agents disabled, falling back to legacy generation")
-        # Would call the existing generation logic here
-        raise NotImplementedError("Legacy fallback not implemented in this demo")
+    # Agents are always enabled
 
     # Initialize and use agent system
     orchestrator = AgentOrchestrator(client_manager)
@@ -300,50 +258,3 @@ async def integrate_with_existing_workflow(
     cards, metadata = await orchestrator.generate_cards_with_agents(**generation_params)
 
     return cards, metadata
-
-
-# Example usage function for testing/demo
-async def demo_agent_system():
-    """Demo function showing how to use the agent system"""
-
-    # This would be replaced with actual API key in real usage
-    api_key = "your-openai-api-key"
-
-    # Initialize client manager
-    client_manager = OpenAIClientManager()
-
-    try:
-        # Create orchestrator
-        orchestrator = AgentOrchestrator(client_manager)
-        await orchestrator.initialize(api_key)
-
-        # Generate cards with agents
-        cards, metadata = await orchestrator.generate_cards_with_agents(
-            topic="Python Functions",
-            subject="programming",
-            num_cards=3,
-            difficulty="intermediate",
-            enable_quality_pipeline=True,
-        )
-
-        print(f"Generated {len(cards)} cards:")
-        for i, card in enumerate(cards, 1):
-            print(f"\nCard {i}:")
-            print(f"Q: {card.front.question}")
-            print(f"A: {card.back.answer}")
-            print(f"Subject: {card.metadata.get('subject', 'Unknown')}")
-
-        print(f"\nMetadata: {metadata}")
-
-        # Get performance metrics
-        performance = orchestrator.get_performance_metrics()
-        print(f"\nPerformance: {performance}")
-
-    except Exception as e:
-        logger.error(f"Demo failed: {e}")
-        raise
-
-
-if __name__ == "__main__":
-    # Run the demo
-    asyncio.run(demo_agent_system())

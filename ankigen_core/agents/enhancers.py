@@ -9,9 +9,8 @@ from openai import AsyncOpenAI
 
 from ankigen_core.logging import logger
 from ankigen_core.models import Card, CardFront, CardBack
-from .base import BaseAgentWrapper, AgentConfig
+from .base import BaseAgentWrapper
 from .config import get_config_manager
-from .metrics import record_agent_execution
 from .judges import JudgeDecision
 
 
@@ -23,13 +22,8 @@ class RevisionAgent(BaseAgentWrapper):
         base_config = config_manager.get_agent_config("revision_agent")
 
         if not base_config:
-            base_config = AgentConfig(
-                name="revision_agent",
-                instructions="""You are a content revision specialist.
-Improve flashcards based on specific feedback from quality judges.
-Make targeted improvements while maintaining educational intent.""",
-                model="gpt-4o",
-                temperature=0.6,
+            raise ValueError(
+                "revision_agent configuration not found - agent system not properly initialized"
             )
 
         super().__init__(base_config, openai_client)
@@ -38,7 +32,7 @@ Make targeted improvements while maintaining educational intent.""",
         self, card: Card, judge_decisions: List[JudgeDecision], max_iterations: int = 3
     ) -> Card:
         """Revise a card based on judge feedback"""
-        start_time = datetime.now()
+        datetime.now()
 
         try:
             # Collect all feedback and improvements
@@ -66,17 +60,6 @@ Make targeted improvements while maintaining educational intent.""",
             revised_card = self._parse_revised_card(response, card)
 
             # Record successful execution
-            record_agent_execution(
-                agent_name=self.config.name,
-                start_time=start_time,
-                end_time=datetime.now(),
-                success=True,
-                metadata={
-                    "cards_revised": 1,
-                    "feedback_sources": len(judge_decisions),
-                    "improvements_applied": len(all_improvements),
-                },
-            )
 
             logger.info(
                 f"RevisionAgent successfully revised card: {card.front.question[:50]}..."
@@ -84,14 +67,6 @@ Make targeted improvements while maintaining educational intent.""",
             return revised_card
 
         except Exception as e:
-            record_agent_execution(
-                agent_name=self.config.name,
-                start_time=start_time,
-                end_time=datetime.now(),
-                success=False,
-                error_message=str(e),
-            )
-
             logger.error(f"RevisionAgent failed to revise card: {e}")
             return card  # Return original card on failure
 
@@ -186,13 +161,8 @@ class EnhancementAgent(BaseAgentWrapper):
         base_config = config_manager.get_agent_config("enhancement_agent")
 
         if not base_config:
-            base_config = AgentConfig(
-                name="enhancement_agent",
-                instructions="""You are a content enhancement specialist.
-Add missing elements and enrich flashcard content without overwhelming learners.
-Enhance metadata, examples, and educational value.""",
-                model="gpt-4o",
-                temperature=0.7,
+            raise ValueError(
+                "enhancement_agent configuration not found - agent system not properly initialized"
             )
 
         super().__init__(base_config, openai_client)
@@ -201,7 +171,7 @@ Enhance metadata, examples, and educational value.""",
         self, card: Card, enhancement_targets: List[str] = None
     ) -> Card:
         """Enhance a card with additional content and metadata"""
-        start_time = datetime.now()
+        datetime.now()
 
         try:
             # Default enhancement targets if none specified
@@ -224,17 +194,6 @@ Enhance metadata, examples, and educational value.""",
             enhanced_card = self._parse_enhanced_card(response, card)
 
             # Record successful execution
-            record_agent_execution(
-                agent_name=self.config.name,
-                start_time=start_time,
-                end_time=datetime.now(),
-                success=True,
-                metadata={
-                    "cards_enhanced": 1,
-                    "enhancement_targets": enhancement_targets,
-                    "enhancements_applied": len(enhancement_targets),
-                },
-            )
 
             logger.info(
                 f"EnhancementAgent successfully enhanced card: {card.front.question[:50]}..."
@@ -242,14 +201,6 @@ Enhance metadata, examples, and educational value.""",
             return enhanced_card
 
         except Exception as e:
-            record_agent_execution(
-                agent_name=self.config.name,
-                start_time=start_time,
-                end_time=datetime.now(),
-                success=False,
-                error_message=str(e),
-            )
-
             logger.error(f"EnhancementAgent failed to enhance card: {e}")
             return card  # Return original card on failure
 
@@ -292,7 +243,7 @@ Return the enhanced card as JSON:
     }},
     "metadata": {{
         "topic": "specific topic",
-        "subject": "subject area", 
+        "subject": "subject area",
         "difficulty": "beginner|intermediate|advanced",
         "tags": ["comprehensive", "tag", "list"],
         "learning_outcomes": ["specific learning outcome 1", "outcome 2"],
@@ -347,7 +298,7 @@ Return the enhanced card as JSON:
         self, cards: List[Card], enhancement_targets: List[str] = None
     ) -> List[Card]:
         """Enhance multiple cards in batch"""
-        start_time = datetime.now()
+        datetime.now()
 
         try:
             enhanced_cards = []
@@ -369,33 +320,11 @@ Return the enhanced card as JSON:
                 [r for r in results if not isinstance(r, Exception)]
             )
 
-            record_agent_execution(
-                agent_name=f"{self.config.name}_batch",
-                start_time=start_time,
-                end_time=datetime.now(),
-                success=True,
-                metadata={
-                    "cards_processed": len(cards),
-                    "successful_enhancements": successful_enhancements,
-                    "enhancement_rate": successful_enhancements / len(cards)
-                    if cards
-                    else 0,
-                },
-            )
-
             logger.info(
                 f"EnhancementAgent batch complete: {successful_enhancements}/{len(cards)} cards enhanced"
             )
             return enhanced_cards
 
         except Exception as e:
-            record_agent_execution(
-                agent_name=f"{self.config.name}_batch",
-                start_time=start_time,
-                end_time=datetime.now(),
-                success=False,
-                error_message=str(e),
-            )
-
             logger.error(f"EnhancementAgent batch failed: {e}")
             return cards  # Return original cards on failure

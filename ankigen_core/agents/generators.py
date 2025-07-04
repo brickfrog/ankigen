@@ -1,16 +1,16 @@
 # Specialized generator agents for card generation
 
 import json
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 from openai import AsyncOpenAI
 
 from ankigen_core.logging import logger
 from ankigen_core.models import Card, CardFront, CardBack
-from .base import BaseAgentWrapper, AgentConfig
+from .base import BaseAgentWrapper
 from .config import get_config_manager
-from .metrics import record_agent_execution
+from .schemas import CardsGenerationSchema
 
 
 class SubjectExpertAgent(BaseAgentWrapper):
@@ -21,15 +21,12 @@ class SubjectExpertAgent(BaseAgentWrapper):
         base_config = config_manager.get_agent_config("subject_expert")
 
         if not base_config:
-            # Fallback config if not found
-            base_config = AgentConfig(
-                name="subject_expert",
-                instructions=f"""You are a world-class expert in {subject} with deep pedagogical knowledge.
-Generate high-quality flashcards that demonstrate mastery of {subject} concepts.
-Focus on technical accuracy, appropriate depth, and real-world applications.""",
-                model="gpt-4o",
-                temperature=0.7,
+            raise ValueError(
+                "subject_expert configuration not found - agent system not properly initialized"
             )
+
+        # Enable structured output for card generation
+        base_config.output_type = CardsGenerationSchema
 
         # Customize instructions for the specific subject
         if subject != "general" and base_config.custom_prompts:
@@ -43,60 +40,26 @@ Focus on technical accuracy, appropriate depth, and real-world applications.""",
         self.subject = subject
 
     async def generate_cards(
-        self,
-        topic: str,
-        num_cards: int = 5,
-        difficulty: str = "intermediate",
-        prerequisites: List[str] = None,
-        context: Dict[str, Any] = None,
+        self, topic: str, num_cards: int = 5, context: Optional[Dict[str, Any]] = None
     ) -> List[Card]:
-        """Generate subject-specific flashcards"""
-        start_time = datetime.now()
-
+        """Generate flashcards for a given topic"""
         try:
-            user_input = self._build_generation_prompt(
-                topic=topic,
-                num_cards=num_cards,
-                difficulty=difficulty,
-                prerequisites=prerequisites or [],
-                context=context or {},
-            )
+            user_input = f"Generate {num_cards} flashcards for the topic: {topic}"
+            if context:
+                user_input += f"\n\nAdditional context: {context}"
 
-            # Execute the agent
-            response = await self.execute(user_input, context)
+            response, usage = await self.execute(user_input, context)
 
-            # Parse the response into Card objects
-            cards = self._parse_cards_response(response, topic)
+            # Log usage information
+            if usage and usage.get("total_tokens", 0) > 0:
+                logger.info(
+                    f"💰 Token Usage: {usage['total_tokens']} tokens (Input: {usage['input_tokens']}, Output: {usage['output_tokens']})"
+                )
 
-            # Record successful execution
-            record_agent_execution(
-                agent_name=self.config.name,
-                start_time=start_time,
-                end_time=datetime.now(),
-                success=True,
-                metadata={
-                    "subject": self.subject,
-                    "topic": topic,
-                    "cards_generated": len(cards),
-                    "difficulty": difficulty,
-                },
-            )
-
-            logger.info(f"SubjectExpertAgent generated {len(cards)} cards for {topic}")
-            return cards
+            return self._parse_cards_response(response, topic)
 
         except Exception as e:
-            # Record failed execution
-            record_agent_execution(
-                agent_name=self.config.name,
-                start_time=start_time,
-                end_time=datetime.now(),
-                success=False,
-                error_message=str(e),
-                metadata={"subject": self.subject, "topic": topic},
-            )
-
-            logger.error(f"SubjectExpertAgent failed to generate cards: {e}")
+            logger.error(f"Card generation failed: {e}")
             raise
 
     def _build_generation_prompt(
@@ -153,47 +116,88 @@ Return your response as a JSON object with this structure:
 
         return prompt
 
-    def _parse_cards_response(self, response: str, topic: str) -> List[Card]:
+    def _parse_cards_response(self, response: Any, topic: str) -> List[Card]:
         """Parse the agent response into Card objects"""
         try:
-            # Try to parse as JSON
-            if isinstance(response, str):
-                data = json.loads(response)
-            else:
-                data = response
+            # Handle structured output from CardsGenerationSchema
+            if hasattr(response, "cards"):
+                # Response is already a CardsGenerationSchema object
+                logger.info(f"✅ STRUCTURED OUTPUT RECEIVED: {type(response)}")
+                card_data_list = response.cards
+            elif isinstance(response, dict) and "cards" in response:
+                # Response is a dict with cards
+                card_data_list = response["cards"]
+            elif isinstance(response, str):
+                # Fallback: Clean up the response - remove markdown code blocks if present
+                response = response.strip()
+                if response.startswith("```json"):
+                    response = response[7:]  # Remove ```json
+                if response.startswith("```"):
+                    response = response[3:]  # Remove ```
+                if response.endswith("```"):
+                    response = response[:-3]  # Remove trailing ```
+                response = response.strip()
 
-            if "cards" not in data:
-                raise ValueError("Response missing 'cards' field")
+                data = json.loads(response)
+                if "cards" not in data:
+                    raise ValueError("Response missing 'cards' field")
+                card_data_list = data["cards"]
+            else:
+                raise ValueError(f"Unexpected response format: {type(response)}")
 
             cards = []
-            for i, card_data in enumerate(data["cards"]):
+            for i, card_data in enumerate(card_data_list):
                 try:
-                    # Validate required fields
-                    if "front" not in card_data or "back" not in card_data:
-                        logger.warning(f"Skipping card {i}: missing front or back")
-                        continue
+                    # Handle both Pydantic models and dictionaries
+                    if hasattr(card_data, "front"):
+                        # Pydantic model
+                        front_data = card_data.front
+                        back_data = card_data.back
+                        metadata = card_data.metadata
+                        card_type = card_data.card_type
+                    else:
+                        # Dictionary
+                        if "front" not in card_data or "back" not in card_data:
+                            logger.warning(f"Skipping card {i}: missing front or back")
+                            continue
+                        front_data = card_data["front"]
+                        back_data = card_data["back"]
+                        metadata = card_data.get("metadata", {})
+                        card_type = card_data.get("card_type", "basic")
 
-                    front_data = card_data["front"]
-                    back_data = card_data["back"]
+                    # Extract question and answer
+                    if hasattr(front_data, "question"):
+                        question = front_data.question
+                    else:
+                        question = front_data.get("question", "")
 
-                    if "question" not in front_data:
-                        logger.warning(f"Skipping card {i}: missing question")
-                        continue
+                    if hasattr(back_data, "answer"):
+                        answer = back_data.answer
+                        explanation = back_data.explanation
+                        example = back_data.example
+                    else:
+                        answer = back_data.get("answer", "")
+                        explanation = back_data.get("explanation", "")
+                        example = back_data.get("example", "")
 
-                    if "answer" not in back_data:
-                        logger.warning(f"Skipping card {i}: missing answer")
+                    if not question or not answer:
+                        logger.warning(f"Skipping card {i}: missing question or answer")
                         continue
 
                     # Create Card object
                     card = Card(
-                        card_type=card_data.get("card_type", "basic"),
-                        front=CardFront(question=front_data["question"]),
+                        card_type=card_type,
+                        front=CardFront(question=question),
                         back=CardBack(
-                            answer=back_data["answer"],
-                            explanation=back_data.get("explanation", ""),
-                            example=back_data.get("example", ""),
+                            answer=answer,
+                            explanation=explanation,
+                            example=example,
                         ),
-                        metadata=card_data.get("metadata", {}),
+                        metadata=metadata
+                        if isinstance(metadata, dict)
+                        else metadata.dict()
+                        if hasattr(metadata, "dict")
+                        else {},
                     )
 
                     # Ensure metadata includes subject and topic
@@ -209,13 +213,24 @@ Return your response as a JSON object with this structure:
                     logger.warning(f"Failed to parse card {i}: {e}")
                     continue
 
+            logger.info(f"✅ PARSED {len(cards)} CARDS FROM STRUCTURED OUTPUT")
             return cards
 
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse cards response as JSON: {e}")
+            logger.error(f"💥 JSON DECODE ERROR: {e}")
+            logger.error("💥 RAW RESPONSE THAT FAILED TO PARSE:")
+            logger.error("---FAILED RESPONSE START---")
+            logger.error(f"{response}")
+            logger.error("---FAILED RESPONSE END---")
+            logger.error(f"💥 RESPONSE TYPE: {type(response)}")
+            if isinstance(response, str):
+                logger.error(f"💥 RESPONSE LENGTH: {len(response)}")
+                logger.error(f"💥 FIRST 200 CHARS: {repr(response[:200])}")
+                logger.error(f"💥 LAST 200 CHARS: {repr(response[-200:])}")
             raise ValueError(f"Invalid JSON response from agent: {e}")
         except Exception as e:
-            logger.error(f"Failed to parse cards response: {e}")
+            logger.error(f"💥 GENERAL PARSING ERROR: {e}")
+            logger.error(f"💥 RESPONSE THAT CAUSED ERROR: {response}")
             raise
 
 
@@ -227,27 +242,22 @@ class PedagogicalAgent(BaseAgentWrapper):
         base_config = config_manager.get_agent_config("pedagogical")
 
         if not base_config:
-            base_config = AgentConfig(
-                name="pedagogical",
-                instructions="""You are an educational specialist focused on learning theory and instructional design.
-Ensure all flashcards follow educational best practices using Bloom's Taxonomy, Spaced Repetition,
-and Cognitive Load Theory. Review for clear learning objectives and appropriate difficulty progression.""",
-                model="gpt-4o",
-                temperature=0.6,
+            raise ValueError(
+                "pedagogical configuration not found - agent system not properly initialized"
             )
 
         super().__init__(base_config, openai_client)
 
     async def review_cards(self, cards: List[Card]) -> List[Dict[str, Any]]:
         """Review cards for pedagogical effectiveness"""
-        start_time = datetime.now()
+        datetime.now()
 
         try:
             reviews = []
 
             for i, card in enumerate(cards):
                 user_input = self._build_review_prompt(card, i)
-                response = await self.execute(user_input)
+                response, usage = await self.execute(user_input)
 
                 try:
                     review_data = (
@@ -265,28 +275,10 @@ and Cognitive Load Theory. Review for clear learning objectives and appropriate 
                     )
 
             # Record successful execution
-            record_agent_execution(
-                agent_name=self.config.name,
-                start_time=start_time,
-                end_time=datetime.now(),
-                success=True,
-                metadata={
-                    "cards_reviewed": len(cards),
-                    "approvals": len([r for r in reviews if r.get("approved", False)]),
-                },
-            )
 
             return reviews
 
         except Exception as e:
-            record_agent_execution(
-                agent_name=self.config.name,
-                start_time=start_time,
-                end_time=datetime.now(),
-                success=False,
-                error_message=str(e),
-            )
-
             logger.error(f"PedagogicalAgent review failed: {e}")
             raise
 
@@ -355,27 +347,22 @@ class ContentStructuringAgent(BaseAgentWrapper):
         base_config = config_manager.get_agent_config("content_structuring")
 
         if not base_config:
-            base_config = AgentConfig(
-                name="content_structuring",
-                instructions="""You are a content organization specialist focused on consistency and structure.
-Format and organize flashcard content for optimal learning with consistent formatting,
-proper metadata, clear questions, and appropriate categorization.""",
-                model="gpt-4o-mini",
-                temperature=0.5,
+            raise ValueError(
+                "content_structuring configuration not found - agent system not properly initialized"
             )
 
         super().__init__(base_config, openai_client)
 
     async def structure_cards(self, cards: List[Card]) -> List[Card]:
         """Structure and format cards for consistency"""
-        start_time = datetime.now()
+        datetime.now()
 
         try:
             structured_cards = []
 
             for i, card in enumerate(cards):
                 user_input = self._build_structuring_prompt(card, i)
-                response = await self.execute(user_input)
+                response, usage = await self.execute(user_input)
 
                 try:
                     structured_data = (
@@ -387,36 +374,9 @@ proper metadata, clear questions, and appropriate categorization.""",
                     logger.warning(f"Failed to structure card {i}: {e}")
                     structured_cards.append(card)  # Keep original on failure
 
-            # Record successful execution
-            record_agent_execution(
-                agent_name=self.config.name,
-                start_time=start_time,
-                end_time=datetime.now(),
-                success=True,
-                metadata={
-                    "cards_structured": len(cards),
-                    "successful_structures": len(
-                        [
-                            c
-                            for c in structured_cards
-                            if c != cards[i]
-                            for i in range(len(cards))
-                        ]
-                    ),
-                },
-            )
-
             return structured_cards
 
         except Exception as e:
-            record_agent_execution(
-                agent_name=self.config.name,
-                start_time=start_time,
-                end_time=datetime.now(),
-                success=False,
-                error_message=str(e),
-            )
-
             logger.error(f"ContentStructuringAgent failed: {e}")
             raise
 
@@ -491,13 +451,8 @@ class GenerationCoordinator(BaseAgentWrapper):
         base_config = config_manager.get_agent_config("generation_coordinator")
 
         if not base_config:
-            base_config = AgentConfig(
-                name="generation_coordinator",
-                instructions="""You are the generation workflow coordinator.
-Orchestrate the card generation process and manage handoffs between specialized agents.
-Make decisions based on content type, user preferences, and system load.""",
-                model="gpt-4o-mini",
-                temperature=0.3,
+            raise ValueError(
+                "generation_coordinator configuration not found - agent system not properly initialized"
             )
 
         super().__init__(base_config, openai_client)
@@ -518,7 +473,7 @@ Make decisions based on content type, user preferences, and system load.""",
         context: Dict[str, Any] = None,
     ) -> List[Card]:
         """Coordinate the full card generation pipeline"""
-        start_time = datetime.now()
+        datetime.now()
 
         try:
             # Initialize subject expert for the specific subject
@@ -529,7 +484,7 @@ Make decisions based on content type, user preferences, and system load.""",
 
             # Step 1: Generate initial cards
             cards = await self.subject_expert.generate_cards(
-                topic=topic, num_cards=num_cards, difficulty=difficulty, context=context
+                topic=topic, num_cards=num_cards, context=context
             )
 
             # Step 2: Pedagogical review (optional)
@@ -555,32 +510,81 @@ Make decisions based on content type, user preferences, and system load.""",
                 cards = await self.content_structuring.structure_cards(cards)
 
             # Record successful coordination
-            record_agent_execution(
-                agent_name=self.config.name,
-                start_time=start_time,
-                end_time=datetime.now(),
-                success=True,
-                metadata={
-                    "topic": topic,
-                    "subject": subject,
-                    "cards_generated": len(cards),
-                    "review_enabled": enable_review,
-                    "structuring_enabled": enable_structuring,
-                },
-            )
 
             logger.info(f"Generation coordination complete: {len(cards)} cards")
             return cards
 
         except Exception as e:
-            record_agent_execution(
-                agent_name=self.config.name,
-                start_time=start_time,
-                end_time=datetime.now(),
-                success=False,
-                error_message=str(e),
-                metadata={"topic": topic, "subject": subject},
-            )
-
             logger.error(f"Generation coordination failed: {e}")
+            raise
+
+    async def generate_structured_cards(
+        self,
+        topic: str,
+        num_cards: int = 5,
+        difficulty: str = "intermediate",
+        context: Optional[Dict[str, Any]] = None,
+    ) -> List[Card]:
+        """Generate structured flashcards with enhanced metadata"""
+        try:
+            user_input = f"""Generate {num_cards} structured flashcards for: {topic}
+
+Difficulty: {difficulty}
+Requirements:
+- Include detailed metadata
+- Add learning outcomes
+- Specify prerequisites
+- Include related concepts
+- Estimate study time"""
+
+            response, usage = await self.execute(user_input)
+
+            # Log usage information
+            if usage and usage.get("total_tokens", 0) > 0:
+                logger.info(
+                    f"💰 Token Usage: {usage['total_tokens']} tokens (Input: {usage['input_tokens']}, Output: {usage['output_tokens']})"
+                )
+
+            # Parse the structured response directly since it should be a CardsGenerationSchema
+            if hasattr(response, "cards") and response.cards:
+                return response.cards
+            else:
+                logger.warning("No cards found in structured response")
+                return []
+
+        except Exception as e:
+            logger.error(f"Structured card generation failed: {e}")
+            raise
+
+    async def generate_adaptive_cards(
+        self,
+        topic: str,
+        learning_style: str = "visual",
+        num_cards: int = 5,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> List[Card]:
+        """Generate cards adapted to specific learning styles"""
+        try:
+            user_input = f"""Generate {num_cards} flashcards for: {topic}
+
+Learning Style: {learning_style}
+Adapt the content format and presentation to match this learning style."""
+
+            response, usage = await self.execute(user_input)
+
+            # Log usage information
+            if usage and usage.get("total_tokens", 0) > 0:
+                logger.info(
+                    f"💰 Token Usage: {usage['total_tokens']} tokens (Input: {usage['input_tokens']}, Output: {usage['output_tokens']})"
+                )
+
+            # Parse the adaptive response directly since it should be a CardsGenerationSchema
+            if hasattr(response, "cards") and response.cards:
+                return response.cards
+            else:
+                logger.warning("No cards found in adaptive response")
+                return []
+
+        except Exception as e:
+            logger.error(f"Adaptive card generation failed: {e}")
             raise

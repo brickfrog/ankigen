@@ -16,15 +16,13 @@ from .judges import (
     JudgeCoordinator,
 )
 from .enhancers import RevisionAgent, EnhancementAgent
-from .feature_flags import AgentFeatureFlags
-from .metrics import AgentMetrics
 from .config import AgentConfigManager
 
 __all__ = [
     "BaseAgentWrapper",
     "AgentConfig",
     "SubjectExpertAgent",
-    "PedagogicalAgent", 
+    "PedagogicalAgent",
     "ContentStructuringAgent",
     "GenerationCoordinator",
     "ContentAccuracyJudge",
@@ -35,7 +33,5 @@ __all__ = [
     "JudgeCoordinator",
     "RevisionAgent",
     "EnhancementAgent",
-    "AgentFeatureFlags",
-    "AgentMetrics",
     "AgentConfigManager",
 ]

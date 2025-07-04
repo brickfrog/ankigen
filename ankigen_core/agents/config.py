@@ -1,10 +1,10 @@
 # Agent configuration management system
 
 import json
-import yaml
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 from dataclasses import dataclass, asdict
+from jinja2 import Environment, FileSystemLoader
 
 from ankigen_core.logging import logger
 from .base import AgentConfig
@@ -42,87 +42,126 @@ class AgentPromptTemplate:
 
 
 class AgentConfigManager:
-    """Manages agent configurations from files and runtime updates"""
+    """Manages agent configurations using Jinja templates and runtime updates"""
 
-    def __init__(self, config_dir: Optional[str] = None):
-        self.config_dir = Path(config_dir) if config_dir else Path("config/agents")
+    def __init__(
+        self,
+        model_overrides: Optional[Dict[str, str]] = None,
+        template_vars: Optional[Dict[str, Any]] = None,
+    ):
+        self.model_overrides = model_overrides or {}
+        self.template_vars = template_vars or {}
         self.configs: Dict[str, AgentConfig] = {}
         self.prompt_templates: Dict[str, AgentPromptTemplate] = {}
-        self._ensure_config_dir()
+
+        # Set up Jinja2 environment with templates directory
+        template_dir = Path(__file__).parent / "templates"
+        self.jinja_env = Environment(loader=FileSystemLoader(template_dir))
         self._load_default_configs()
 
-    def _ensure_config_dir(self):
-        """Ensure config directory exists"""
-        self.config_dir.mkdir(parents=True, exist_ok=True)
+    def update_models(self, model_overrides: Dict[str, str]):
+        """Update model selections and regenerate configs"""
+        self.model_overrides = model_overrides
+        self._load_default_configs()
+        logger.info(f"Updated model overrides: {model_overrides}")
 
-        # Create default config files if they don't exist
-        defaults_dir = self.config_dir / "defaults"
-        defaults_dir.mkdir(exist_ok=True)
-
-        if not (defaults_dir / "generators.yaml").exists():
-            self._create_default_generator_configs()
-
-        if not (defaults_dir / "judges.yaml").exists():
-            self._create_default_judge_configs()
-
-        if not (defaults_dir / "enhancers.yaml").exists():
-            self._create_default_enhancer_configs()
+    def update_template_vars(self, template_vars: Dict[str, Any]):
+        """Update template variables and regenerate configs"""
+        self.template_vars = template_vars
+        self._load_default_configs()
+        logger.info(f"Updated template variables: {template_vars}")
 
     def _load_default_configs(self):
-        """Load all default configurations"""
+        """Load all default configurations from Jinja templates"""
         try:
-            self._load_configs_from_file("defaults/generators.yaml")
-            self._load_configs_from_file("defaults/judges.yaml")
-            self._load_configs_from_file("defaults/enhancers.yaml")
-            logger.info(f"Loaded {len(self.configs)} agent configurations")
+            self._load_configs_from_template("generators.j2")
+            self._load_configs_from_template("judges.j2")
+            self._load_configs_from_template("enhancers.j2")
+            self._load_prompt_templates_from_template("prompts.j2")
+            logger.info(
+                f"Loaded {len(self.configs)} agent configurations from Jinja templates"
+            )
         except Exception as e:
-            logger.error(f"Failed to load default agent configurations: {e}")
+            logger.error(f"Failed to load agent configurations from templates: {e}")
 
-    def _load_configs_from_file(self, filename: str):
-        """Load configurations from a YAML/JSON file"""
-        file_path = self.config_dir / filename
+    def _get_model_for_agent(self, agent_name: str, default_model: str) -> str:
+        """Get model for agent, using override if available"""
+        return self.model_overrides.get(agent_name, default_model)
 
-        if not file_path.exists():
-            logger.warning(f"Agent config file not found: {file_path}")
-            return
-
+    def _load_configs_from_template(self, template_name: str):
+        """Load agent configurations from a Jinja template"""
         try:
-            with open(file_path, "r") as f:
-                if filename.endswith(".yaml") or filename.endswith(".yml"):
-                    data = yaml.safe_load(f)
-                else:
-                    data = json.load(f)
+            template = self.jinja_env.get_template(template_name)
 
-            # Load agent configs
-            if "agents" in data:
-                for agent_name, agent_data in data["agents"].items():
-                    config = AgentConfig(
-                        name=agent_name,
-                        instructions=agent_data.get("instructions", ""),
-                        model=agent_data.get("model", "gpt-4o"),
-                        temperature=agent_data.get("temperature", 0.7),
-                        max_tokens=agent_data.get("max_tokens"),
-                        timeout=agent_data.get("timeout", 30.0),
-                        retry_attempts=agent_data.get("retry_attempts", 3),
-                        enable_tracing=agent_data.get("enable_tracing", True),
-                        custom_prompts=agent_data.get("custom_prompts", {}),
-                    )
-                    self.configs[agent_name] = config
+            # Default models for each agent type
+            default_models = {
+                "subject_expert_model": "gpt-4.1",
+                "pedagogical_agent_model": "gpt-4.1-nano",
+                "content_structuring_model": "gpt-4.1-nano",
+                "generation_coordinator_model": "gpt-4.1",
+                "content_accuracy_judge_model": "gpt-4.1-nano",
+                "pedagogical_judge_model": "gpt-4.1-nano",
+                "clarity_judge_model": "gpt-4.1-nano",
+                "technical_judge_model": "gpt-4.1-nano",
+                "completeness_judge_model": "gpt-4.1-nano",
+                "judge_coordinator_model": "gpt-4.1",
+                "revision_agent_model": "gpt-4.1",
+                "enhancement_agent_model": "gpt-4.1",
+            }
 
-            # Load prompt templates
-            if "prompt_templates" in data:
-                for template_name, template_data in data["prompt_templates"].items():
-                    template = AgentPromptTemplate(
-                        system_prompt=template_data.get("system_prompt", ""),
-                        user_prompt_template=template_data.get(
-                            "user_prompt_template", ""
-                        ),
-                        variables=template_data.get("variables", {}),
-                    )
-                    self.prompt_templates[template_name] = template
+            # Simple mapping: agent_name -> agent_name_model
+            model_vars = {}
+            for agent_name, model in self.model_overrides.items():
+                model_vars[f"{agent_name}_model"] = model
+
+            # Merge all template variables with defaults
+            render_vars = {**default_models, **self.template_vars, **model_vars}
+
+            logger.info(f"Rendering template {template_name} with vars: {render_vars}")
+            rendered_json = template.render(**render_vars)
+            config_data = json.loads(rendered_json)
+
+            # Create AgentConfig objects from the rendered data
+            for agent_name, agent_data in config_data.items():
+                config = AgentConfig(
+                    name=agent_data.get("name", agent_name),
+                    instructions=agent_data.get("instructions", ""),
+                    model=agent_data.get("model", "gpt-4"),
+                    temperature=agent_data.get("temperature", 0.7),
+                    max_tokens=agent_data.get("max_tokens"),
+                    timeout=agent_data.get("timeout", 30.0),
+                    retry_attempts=agent_data.get("retry_attempts", 3),
+                    enable_tracing=agent_data.get("enable_tracing", True),
+                    custom_prompts=agent_data.get("custom_prompts", {}),
+                )
+                self.configs[agent_name] = config
+                logger.info(f"Loaded config for {agent_name}: model={config.model}")
 
         except Exception as e:
-            logger.error(f"Failed to load agent config from {file_path}: {e}")
+            logger.error(f"Failed to load configs from template {template_name}: {e}")
+
+    def _load_prompt_templates_from_template(self, template_name: str):
+        """Load prompt templates from a Jinja template"""
+        try:
+            template = self.jinja_env.get_template(template_name)
+
+            # Render with current template variables
+            rendered_json = template.render(**self.template_vars)
+            template_data = json.loads(rendered_json)
+
+            # Create AgentPromptTemplate objects
+            for template_name, template_info in template_data.items():
+                prompt_template = AgentPromptTemplate(
+                    system_prompt=template_info.get("system_prompt", ""),
+                    user_prompt_template=template_info.get("user_prompt_template", ""),
+                    variables=template_info.get("variables", {}),
+                )
+                self.prompt_templates[template_name] = prompt_template
+
+        except Exception as e:
+            logger.error(
+                f"Failed to load prompt templates from template {template_name}: {e}"
+            )
 
     def get_agent_config(self, agent_name: str) -> Optional[AgentConfig]:
         """Get configuration for a specific agent"""
@@ -175,7 +214,7 @@ class AgentConfigManager:
                 config = AgentConfig(
                     name=agent_name,
                     instructions=agent_data.get("instructions", ""),
-                    model=agent_data.get("model", "gpt-4o"),
+                    model=agent_data.get("model", "gpt-4.1"),
                     temperature=agent_data.get("temperature", 0.7),
                     max_tokens=agent_data.get("max_tokens"),
                     timeout=agent_data.get("timeout", 30.0),
@@ -215,8 +254,6 @@ class AgentConfigManager:
 
     def save_config_to_file(self, filename: str, agents: List[str] = None):
         """Save current configurations to a file"""
-        file_path = self.config_dir / filename
-
         # Prepare data structure
         data = {"agents": {}, "prompt_templates": {}}
 
@@ -232,267 +269,28 @@ class AgentConfigManager:
             data["prompt_templates"][template_name] = asdict(template)
 
         try:
-            with open(file_path, "w") as f:
-                if filename.endswith(".yaml") or filename.endswith(".yml"):
-                    yaml.dump(data, f, default_flow_style=False, indent=2)
-                else:
-                    json.dump(data, f, indent=2)
-            logger.info(f"Saved agent configurations to {file_path}")
+            with open(filename, "w") as f:
+                json.dump(data, f, indent=2)
+            logger.info(f"Saved agent configurations to {filename}")
         except Exception as e:
-            logger.error(f"Failed to save agent config to {file_path}: {e}")
-
-    def _create_default_generator_configs(self):
-        """Create default configuration for generator agents"""
-        config = {
-            "agents": {
-                "subject_expert": {
-                    "instructions": """You are a world-class expert in {subject} with deep pedagogical knowledge. 
-Your role is to generate high-quality flashcards that demonstrate mastery of {subject} concepts.
-
-Key responsibilities:
-- Ensure technical accuracy and depth appropriate for the target level
-- Use domain-specific terminology correctly
-- Include practical applications and real-world examples
-- Connect concepts to prerequisite knowledge
-- Avoid oversimplification while maintaining clarity
-
-Generate cards that test understanding, not just memorization.""",
-                    "model": "gpt-4o",
-                    "temperature": 0.7,
-                    "timeout": 45.0,
-                    "custom_prompts": {
-                        "math": "Focus on problem-solving strategies and mathematical reasoning",
-                        "science": "Emphasize experimental design and scientific method",
-                        "history": "Connect events to broader historical patterns and causation",
-                        "programming": "Include executable examples and best practices",
-                    },
-                },
-                "pedagogical": {
-                    "instructions": """You are an educational specialist focused on learning theory and instructional design.
-Your role is to ensure all flashcards follow educational best practices.
-
-Apply these frameworks:
-- Bloom's Taxonomy: Ensure questions target appropriate cognitive levels
-- Spaced Repetition: Design cards for optimal retention
-- Cognitive Load Theory: Avoid overwhelming learners
-- Active Learning: Encourage engagement and application
-
-Review cards for:
-- Clear learning objectives
-- Appropriate difficulty progression
-- Effective use of examples and analogies
-- Prerequisite knowledge alignment""",
-                    "model": "gpt-4o",
-                    "temperature": 0.6,
-                    "timeout": 30.0,
-                },
-                "content_structuring": {
-                    "instructions": """You are a content organization specialist focused on consistency and structure.
-Your role is to format and organize flashcard content for optimal learning.
-
-Ensure all cards have:
-- Consistent formatting and style
-- Proper metadata and tagging
-- Clear, unambiguous questions
-- Complete, well-structured answers
-- Appropriate examples and explanations
-- Relevant categorization and difficulty levels
-
-Maintain high standards for readability and accessibility.""",
-                    "model": "gpt-4o-mini",
-                    "temperature": 0.5,
-                    "timeout": 25.0,
-                },
-                "generation_coordinator": {
-                    "instructions": """You are the generation workflow coordinator. 
-Your role is to orchestrate the card generation process and manage handoffs between specialized agents.
-
-Responsibilities:
-- Route requests to appropriate specialist agents
-- Coordinate parallel generation tasks
-- Manage workflow state and progress
-- Handle errors and fallback strategies
-- Optimize generation pipelines
-
-Make decisions based on content type, user preferences, and system load.""",
-                    "model": "gpt-4o-mini",
-                    "temperature": 0.3,
-                    "timeout": 20.0,
-                },
-            },
-            "prompt_templates": {
-                "subject_generation": {
-                    "system_prompt": "You are an expert in {subject}. Generate {num_cards} flashcards covering key concepts.",
-                    "user_prompt_template": "Topic: {topic}\nDifficulty: {difficulty}\nPrerequisites: {prerequisites}\n\nGenerate cards that help learners master this topic.",
-                    "variables": {
-                        "subject": "general",
-                        "num_cards": "5",
-                        "difficulty": "intermediate",
-                        "prerequisites": "none",
-                    },
-                }
-            },
-        }
-
-        with open(self.config_dir / "defaults" / "generators.yaml", "w") as f:
-            yaml.dump(config, f, default_flow_style=False, indent=2)
-
-    def _create_default_judge_configs(self):
-        """Create default configuration for judge agents"""
-        config = {
-            "agents": {
-                "content_accuracy_judge": {
-                    "instructions": """You are a fact-checking and accuracy specialist.
-Your role is to verify the correctness and accuracy of flashcard content.
-
-Evaluate cards for:
-- Factual accuracy and up-to-date information
-- Proper use of terminology and definitions
-- Absence of misconceptions or errors
-- Appropriate level of detail for the target audience
-- Consistency with authoritative sources
-
-Rate each card's accuracy and provide specific feedback on any issues found.""",
-                    "model": "gpt-4o",
-                    "temperature": 0.3,
-                    "timeout": 25.0,
-                },
-                "pedagogical_judge": {
-                    "instructions": """You are an educational assessment specialist.
-Your role is to evaluate flashcards for pedagogical effectiveness.
-
-Assess cards for:
-- Alignment with learning objectives
-- Appropriate difficulty level and cognitive load
-- Effective use of educational principles
-- Clear prerequisite knowledge requirements
-- Potential for promoting deep learning
-
-Provide detailed feedback on educational effectiveness and improvement suggestions.""",
-                    "model": "gpt-4o",
-                    "temperature": 0.4,
-                    "timeout": 30.0,
-                },
-                "clarity_judge": {
-                    "instructions": """You are a communication and clarity specialist.
-Your role is to ensure flashcards are clear, unambiguous, and well-written.
-
-Evaluate cards for:
-- Question clarity and specificity
-- Answer completeness and coherence
-- Absence of ambiguity or confusion
-- Appropriate language level for target audience
-- Effective use of examples and explanations
-
-Rate clarity and provide specific suggestions for improvement.""",
-                    "model": "gpt-4o-mini",
-                    "temperature": 0.3,
-                    "timeout": 20.0,
-                },
-                "technical_judge": {
-                    "instructions": """You are a technical accuracy specialist for programming and technical content.
-Your role is to verify technical correctness and best practices.
-
-For technical cards, check:
-- Code syntax and functionality
-- Best practices and conventions
-- Security considerations
-- Performance implications
-- Tool and framework accuracy
-
-Provide detailed technical feedback and corrections.""",
-                    "model": "gpt-4o",
-                    "temperature": 0.2,
-                    "timeout": 35.0,
-                },
-                "completeness_judge": {
-                    "instructions": """You are a completeness and quality assurance specialist.
-Your role is to ensure flashcards meet all requirements and quality standards.
-
-Verify cards have:
-- All required fields and metadata
-- Proper formatting and structure
-- Appropriate tags and categorization
-- Complete explanations and examples
-- Consistent quality across the set
-
-Rate completeness and identify missing elements.""",
-                    "model": "gpt-4o-mini",
-                    "temperature": 0.3,
-                    "timeout": 20.0,
-                },
-                "judge_coordinator": {
-                    "instructions": """You are the quality assurance coordinator.
-Your role is to orchestrate the judging process and synthesize feedback from specialist judges.
-
-Responsibilities:
-- Route cards to appropriate specialist judges
-- Coordinate parallel judging tasks
-- Synthesize feedback from multiple judges
-- Make final accept/reject/revise decisions
-- Manage judge workload and performance
-
-Balance speed with thoroughness in quality assessment.""",
-                    "model": "gpt-4o-mini",
-                    "temperature": 0.3,
-                    "timeout": 15.0,
-                },
-            }
-        }
-
-        with open(self.config_dir / "defaults" / "judges.yaml", "w") as f:
-            yaml.dump(config, f, default_flow_style=False, indent=2)
-
-    def _create_default_enhancer_configs(self):
-        """Create default configuration for enhancement agents"""
-        config = {
-            "agents": {
-                "revision_agent": {
-                    "instructions": """You are a content revision specialist.
-Your role is to improve flashcards based on feedback from quality judges.
-
-For each revision request:
-- Analyze specific feedback provided
-- Make targeted improvements to address issues
-- Maintain the card's educational intent
-- Preserve correct information while fixing problems
-- Improve clarity, accuracy, and pedagogical value
-
-Focus on iterative improvement rather than complete rewrites.""",
-                    "model": "gpt-4o",
-                    "temperature": 0.6,
-                    "timeout": 40.0,
-                },
-                "enhancement_agent": {
-                    "instructions": """You are a content enhancement specialist.
-Your role is to add missing elements and enrich flashcard content.
-
-Enhancement tasks:
-- Add missing explanations or examples
-- Improve metadata and tagging
-- Generate additional context or background
-- Create connections to related concepts
-- Enhance visual or structural elements
-
-Ensure enhancements add value without overwhelming the learner.""",
-                    "model": "gpt-4o",
-                    "temperature": 0.7,
-                    "timeout": 35.0,
-                },
-            }
-        }
-
-        with open(self.config_dir / "defaults" / "enhancers.yaml", "w") as f:
-            yaml.dump(config, f, default_flow_style=False, indent=2)
+            logger.error(f"Failed to save agent config to {filename}: {e}")
 
 
 # Global config manager instance
 _global_config_manager: Optional[AgentConfigManager] = None
 
 
-def get_config_manager() -> AgentConfigManager:
+def get_config_manager(
+    model_overrides: Optional[Dict[str, str]] = None,
+    template_vars: Optional[Dict[str, Any]] = None,
+) -> AgentConfigManager:
     """Get the global agent configuration manager"""
     global _global_config_manager
     if _global_config_manager is None:
-        _global_config_manager = AgentConfigManager()
+        _global_config_manager = AgentConfigManager(model_overrides, template_vars)
+    else:
+        if model_overrides:
+            _global_config_manager.update_models(model_overrides)
+        if template_vars:
+            _global_config_manager.update_template_vars(template_vars)
     return _global_config_manager
