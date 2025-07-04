@@ -3,7 +3,6 @@ import asyncio
 import os
 import re
 from datetime import datetime
-from pathlib import Path  # Potentially for favicon_path
 
 import gradio as gr
 import pandas as pd
@@ -1072,14 +1071,6 @@ if __name__ == "__main__":
     try:
         ankigen_interface = create_ankigen_interface()
         logger.info("Launching AnkiGen Gradio interface...")
-        # Ensure favicon.ico is in the same directory as app.py or provide correct path
-        favicon_path = Path(__file__).parent / "favicon.ico"
-        if favicon_path.exists():
-            ankigen_interface.launch(share=False, favicon_path=str(favicon_path))
-        else:
-            logger.warning(
-                f"Favicon not found at {favicon_path}, launching without it.",
-            )
-            ankigen_interface.launch(share=False)
+        ankigen_interface.launch()
     except Exception as e:
         logger.critical(f"Failed to launch Gradio interface: {e}", exc_info=True)
