@@ -196,7 +196,7 @@ class RateLimiter:
 # def some_other_util_function():
 #     pass
 
-HTML_TAG_REGEX = re.compile(r"<[^>]+>")
+HTML_TAG_REGEX = re.compile(r"<[^>]*>")
 
 
 def strip_html_tags(text: str) -> str:
