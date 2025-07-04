@@ -306,10 +306,6 @@ def create_ankigen_interface():
                                 label="Generate Cloze Cards (Experimental)",
                                 value=False,
                             )
-                            llm_judge_checkbox = gr.Checkbox(
-                                label="Use LLM Judge",
-                                value=False,
-                            )
 
                             # Agent System Controls (simplified since we're agent-only)
                             if AGENTS_AVAILABLE_APP:
@@ -666,7 +662,6 @@ def create_ankigen_interface():
                 cards_per_topic_val,
                 preference_prompt_val,
                 generate_cloze_checkbox_val,
-                llm_judge_checkbox_val,
                 agent_mode_val,
                 enable_subject_expert_val,
                 enable_generation_coordinator_val,
@@ -774,7 +769,6 @@ def create_ankigen_interface():
                     cards_per_topic_val,
                     preference_prompt_val,
                     generate_cloze_checkbox_val,
-                    llm_judge_checkbox_val,
                 )
                 # Expect 3-tuple return (dataframe, total_cards_html, token_usage_html)
 
@@ -791,7 +785,6 @@ def create_ankigen_interface():
                     cards_per_topic,
                     preference_prompt,
                     generate_cloze_checkbox,
-                    llm_judge_checkbox,
                     agent_mode_dropdown,
                     enable_subject_expert,
                     enable_generation_coordinator,

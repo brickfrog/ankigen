@@ -57,8 +57,8 @@ class ContentAccuracyJudge(BaseAgentWrapper):
         try:
             user_input = f"""Evaluate this flashcard for factual accuracy:
 
-Front: {card.front.content}
-Back: {card.back.content}
+Front: {card.front.question}
+Back: {card.back.answer}
 
 Assess:
 1. Factual correctness
@@ -153,7 +153,7 @@ cognitive levels, and educational best practices.""",
 
         try:
             user_input = self._build_judgment_prompt(card)
-            response = await self.execute(user_input)
+            response, usage = await self.execute(user_input)
 
             decision_data = (
                 json.loads(response) if isinstance(response, str) else response
@@ -263,7 +263,7 @@ to the target audience.""",
 
         try:
             user_input = self._build_judgment_prompt(card)
-            response = await self.execute(user_input)
+            response, usage = await self.execute(user_input)
 
             decision_data = (
                 json.loads(response) if isinstance(response, str) else response
@@ -378,7 +378,7 @@ Verify code syntax, best practices, security considerations, and technical corre
                 )
 
             user_input = self._build_judgment_prompt(card)
-            response = await self.execute(user_input)
+            response, usage = await self.execute(user_input)
 
             decision_data = (
                 json.loads(response) if isinstance(response, str) else response
@@ -504,7 +504,7 @@ and maintain consistent quality standards.""",
 
         try:
             user_input = self._build_judgment_prompt(card)
-            response = await self.execute(user_input)
+            response, usage = await self.execute(user_input)
 
             decision_data = (
                 json.loads(response) if isinstance(response, str) else response

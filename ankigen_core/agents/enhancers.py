@@ -54,7 +54,7 @@ class RevisionAgent(BaseAgentWrapper):
             )
 
             # Execute revision
-            response = await self.execute(user_input)
+            response, usage = await self.execute(user_input)
 
             # Parse revised card
             revised_card = self._parse_revised_card(response, card)
@@ -188,7 +188,7 @@ class EnhancementAgent(BaseAgentWrapper):
             user_input = self._build_enhancement_prompt(card, enhancement_targets)
 
             # Execute enhancement
-            response = await self.execute(user_input)
+            response, usage = await self.execute(user_input)
 
             # Parse enhanced card
             enhanced_card = self._parse_enhanced_card(response, card)
