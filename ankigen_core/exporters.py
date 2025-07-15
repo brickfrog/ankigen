@@ -44,7 +44,6 @@ BASIC_MODEL = genanki.Model(
         {"name": "Example"},
         {"name": "Prerequisites"},
         {"name": "Learning_Outcomes"},
-        {"name": "Common_Misconceptions"},
         {"name": "Difficulty"},
         {"name": "SourceURL"},  # Added for consistency if used by template
         {"name": "TagsStr"},  # Added for consistency if used by template
@@ -104,10 +103,6 @@ BASIC_MODEL = genanki.Model(
                             <div>{{Learning_Outcomes}}</div>
                         </div>
 
-                        <div class=\"misconceptions\">
-                            <h3>Common Misconceptions - Debunked</h3>
-                            <div>{{Common_Misconceptions}}</div>
-                        </div>
 
                         <div class=\"difficulty\">
                             <h3>Difficulty Level</h3>
@@ -314,7 +309,6 @@ CLOZE_MODEL = genanki.Model(
         {"name": "Example"},
         {"name": "Prerequisites"},
         {"name": "Learning_Outcomes"},
-        {"name": "Common_Misconceptions"},
         {"name": "Difficulty"},
         {"name": "SourceURL"},
         {"name": "TagsStr"},
@@ -374,10 +368,6 @@ CLOZE_MODEL = genanki.Model(
                             <div>{{Learning_Outcomes}}</div>
                         </div>
 
-                        <div class=\"misconceptions\">
-                            <h3>Common Misconceptions - Debunked</h3>
-                            <div>{{Common_Misconceptions}}</div>
-                        </div>
 
                         <div class=\"difficulty\">
                             <h3>Difficulty Level</h3>
@@ -703,7 +693,6 @@ def export_cards_to_apkg(
         example = card_dict.get("Example", "")
         prerequisites = card_dict.get("Prerequisites", "")
         learning_outcomes = card_dict.get("Learning_Outcomes", "")
-        common_misconceptions = card_dict.get("Common_Misconceptions", "")
         difficulty = card_dict.get("Difficulty", "")
         source_url = card_dict.get("SourceURL", "")
         tags_str_field = card_dict.get(
@@ -721,7 +710,7 @@ def export_cards_to_apkg(
         try:
             if note_type.lower() == "cloze":
                 # CLOZE_MODEL fields: Text, Back Extra, Explanation, Example, Prerequisites,
-                # Learning_Outcomes, Common_Misconceptions, Difficulty, SourceURL, TagsStr
+                # Learning_Outcomes, Difficulty, SourceURL, TagsStr
                 note_fields = [
                     question,  # Text (this is the card_dict['Question'] which should be cloze-formatted)
                     answer,  # Back Extra (this is card_dict['Answer'])
@@ -729,7 +718,6 @@ def export_cards_to_apkg(
                     example,
                     prerequisites,
                     learning_outcomes,
-                    common_misconceptions,
                     difficulty,
                     source_url,
                     tags_str_field,
@@ -741,7 +729,7 @@ def export_cards_to_apkg(
                 )
             else:  # Basic
                 # BASIC_MODEL fields: Question, Answer, Explanation, Example, Prerequisites,
-                # Learning_Outcomes, Common_Misconceptions, Difficulty, SourceURL, TagsStr
+                # Learning_Outcomes, Difficulty, SourceURL, TagsStr
                 note_fields = [
                     question,
                     answer,
@@ -749,7 +737,6 @@ def export_cards_to_apkg(
                     example,
                     prerequisites,
                     learning_outcomes,
-                    common_misconceptions,
                     difficulty,
                     source_url,
                     tags_str_field,
@@ -961,9 +948,6 @@ def export_dataframe_to_apkg(
                 "Prerequisites": _format_field_as_string(row.get("Prerequisites", "")),
                 "Learning_Outcomes": _format_field_as_string(
                     row.get("Learning_Outcomes", "")
-                ),
-                "Common_Misconceptions": _format_field_as_string(
-                    row.get("Common_Misconceptions", "")
                 ),
                 "Difficulty": difficulty_raw,  # Keep the original HTML for the 'Difficulty' field itself
                 "SourceURL": _format_field_as_string(row.get("Source_URL", "")),

@@ -44,7 +44,6 @@ class ConceptBreakdown(BaseModel):
     main_concept: str
     prerequisites: List[str]
     learning_outcomes: List[str]
-    common_misconceptions: List[str]
     difficulty_level: str  # "beginner", "intermediate", "advanced"
 
 

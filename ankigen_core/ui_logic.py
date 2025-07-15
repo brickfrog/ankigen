@@ -78,7 +78,6 @@ def update_mode_visibility(
         "Example",
         "Prerequisites",
         "Learning_Outcomes",
-        "Common_Misconceptions",
         "Difficulty",
     ]
     subjects_list_df_columns = ["Subject", "Prerequisites", "Time Estimate"]
@@ -142,7 +141,6 @@ def use_selected_subjects(subjects_df: pd.DataFrame | None):
                         "Example",
                         "Prerequisites",
                         "Learning_Outcomes",
-                        "Common_Misconceptions",
                         "Difficulty",
                     ]
                 )
@@ -191,7 +189,6 @@ def use_selected_subjects(subjects_df: pd.DataFrame | None):
                         "Example",
                         "Prerequisites",
                         "Learning_Outcomes",
-                        "Common_Misconceptions",
                         "Difficulty",
                     ]
                 )
@@ -238,7 +235,6 @@ def use_selected_subjects(subjects_df: pd.DataFrame | None):
                     "Example",
                     "Prerequisites",
                     "Learning_Outcomes",
-                    "Common_Misconceptions",
                     "Difficulty",
                 ]
             )

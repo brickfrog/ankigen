@@ -95,7 +95,16 @@ async def generate_cards_batch(
         """
 
     cards_prompt = f"""
-    Generate {num_cards} flashcards for the topic: {topic}
+    Generate {num_cards} ATOMIC flashcards for the topic: {topic}
+    
+    Follow these ATOMIC principles:
+    - Each answer should be 1-9 words maximum
+    - Use bland, standardized questions (no fancy formatting)
+    - Break complex concepts into multiple simple cards
+    - Put ALL learning content in answers, never in questions
+    - Use handles (>references) to connect related cards
+    - Design questions to match real-life recall situations
+    
     {cloze_instruction}
     Return your response as a JSON object with the following structure:
     {{
@@ -113,7 +122,6 @@ async def generate_cards_batch(
                 "metadata": {{
                     "prerequisites": ["list", "of", "prerequisites"],
                     "learning_outcomes": ["list", "of", "outcomes"],
-                    "misconceptions": ["list", "of", "misconceptions"],
                     "difficulty": "beginner/intermediate/advanced"
                 }}
             }}
@@ -627,8 +635,16 @@ async def orchestrate_card_generation(  # MODIFIED: Added async
 
             # Let's make a direct call to structured_output_completion for "text" mode.
             text_mode_user_prompt = f"""
-            Please generate {cards_per_topic * topic_number} flashcards based on the following text content.
-            I have already provided the text content in the system prompt (or it is implicitly part of this context).
+            Please generate {cards_per_topic * topic_number} ATOMIC flashcards based on the following text content.
+            
+            Follow these ATOMIC principles:
+            - Each answer should be 1-9 words maximum
+            - Use bland, standardized questions (no fancy formatting)
+            - Break complex concepts into multiple simple cards
+            - Put ALL learning content in answers, never in questions
+            - Use handles (>references) to connect related cards
+            - Design questions to match real-life recall situations
+            
             Ensure the flashcards cover diverse aspects of the text.
             {get_cloze_instruction(generate_cloze)}
             Return your response as a JSON object with the following structure:
@@ -831,7 +847,6 @@ def get_card_json_structure_prompt() -> str:
                 "metadata": {
                     "prerequisites": ["list", "of", "prerequisites"],
                     "learning_outcomes": ["list", "of", "outcomes"],
-                    "misconceptions": ["list", "of", "misconceptions"],
                     "difficulty": "beginner/intermediate/advanced"
                 }
             }
@@ -913,7 +928,6 @@ def format_cards_for_dataframe(
         metadata = card_obj.metadata or {}
         prerequisites = metadata.get("prerequisites", [])
         learning_outcomes = metadata.get("learning_outcomes", [])
-        common_misconceptions = metadata.get("misconceptions", [])
         difficulty = metadata.get("difficulty", "N/A")
         # Ensure list-based metadata are joined as plain strings for DataFrame
         prerequisites_str = strip_html_tags(
@@ -925,11 +939,6 @@ def format_cards_for_dataframe(
             ", ".join(learning_outcomes)
             if isinstance(learning_outcomes, list)
             else str(learning_outcomes)
-        )
-        common_misconceptions_str = strip_html_tags(
-            ", ".join(common_misconceptions)
-            if isinstance(common_misconceptions, list)
-            else str(common_misconceptions)
         )
         difficulty_str = strip_html_tags(str(difficulty))
 
@@ -947,7 +956,6 @@ def format_cards_for_dataframe(
             "Example": example,  # Already stripped
             "Prerequisites": prerequisites_str,
             "Learning_Outcomes": learning_outcomes_str,
-            "Common_Misconceptions": common_misconceptions_str,
             "Difficulty": difficulty_str,  # Ensure difficulty is plain text
             "Source_URL": strip_html_tags(
                 metadata.get("source_url", "")
@@ -969,7 +977,6 @@ def get_dataframe_columns() -> list[str]:
         "Example",
         "Prerequisites",
         "Learning_Outcomes",
-        "Common_Misconceptions",
         "Difficulty",
         "Source_URL",
     ]
@@ -1028,11 +1035,6 @@ def generate_cards_from_crawled_content(
         learning_outcomes = (
             card_obj.metadata.get("learning_outcomes", []) if card_obj.metadata else []
         )
-        common_misconceptions = (
-            card_obj.metadata.get("common_misconceptions", [])
-            if card_obj.metadata
-            else []
-        )
 
         prerequisites_str = strip_html_tags(
             ", ".join(prerequisites)
@@ -1043,11 +1045,6 @@ def generate_cards_from_crawled_content(
             ", ".join(learning_outcomes)
             if isinstance(learning_outcomes, list)
             else str(learning_outcomes)
-        )
-        common_misconceptions_str = strip_html_tags(
-            ", ".join(common_misconceptions)
-            if isinstance(common_misconceptions, list)
-            else str(common_misconceptions)
         )
         difficulty_str = strip_html_tags(
             str(
@@ -1067,7 +1064,6 @@ def generate_cards_from_crawled_content(
             "Example": card_obj.back.example or "",  # Should be plain
             "Prerequisites": prerequisites_str,
             "Learning_Outcomes": learning_outcomes_str,
-            "Common_Misconceptions": common_misconceptions_str,
             "Difficulty": difficulty_str,
             "Source_URL": strip_html_tags(
                 card_obj.metadata.get("source_url", "") if card_obj.metadata else ""

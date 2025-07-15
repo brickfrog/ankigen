@@ -80,7 +80,6 @@ example_data = pd.DataFrame(
             "```sql\nSELECT column1, column2 FROM my_table WHERE condition;\n```",
             ["Understanding of database tables"],
             ["Retrieve specific data"],
-            ["❌ SELECT * is always efficient (Reality: Can be slow for large tables)"],
             "beginner",
         ],
         [
@@ -96,7 +95,6 @@ def greet(name):
 ```""",
             ["Basic programming concepts"],
             ["Define reusable blocks of code"],
-            ["❌ Forgetting the colon (:) after the definition"],
             "beginner",
         ],
     ],
@@ -110,7 +108,6 @@ def greet(name):
         "Example",
         "Prerequisites",
         "Learning_Outcomes",
-        "Common_Misconceptions",
         "Difficulty",
     ],
 )
@@ -482,7 +479,7 @@ def create_ankigen_interface():
                 gr.Markdown("### Generated Cards")
                 with gr.Accordion("Output Format", open=False):
                     gr.Markdown(
-                        "Cards: Index, Topic, Type, Q, A, Explanation, Example, Prerequisites, Outcomes, Misconceptions, Difficulty. Export: CSV, .apkg",
+                        "Cards: Index, Topic, Type, Q, A, Explanation, Example, Prerequisites, Outcomes, Difficulty. Export: CSV, .apkg",
                     )
                     with gr.Accordion("Example Card Format", open=False):
                         gr.Code(
@@ -502,12 +499,10 @@ def create_ankigen_interface():
                         "Example",
                         "Prerequisites",
                         "Learning_Outcomes",
-                        "Common_Misconceptions",
                         "Difficulty",
                     ],
                     datatype=[
                         "number",
-                        "str",
                         "str",
                         "str",
                         "str",
@@ -529,7 +524,6 @@ def create_ankigen_interface():
                         200,
                         250,
                         200,
-                        150,
                         150,
                         150,
                         100,

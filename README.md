@@ -208,3 +208,4 @@ BSD 2-Clause License
 
 - This project uses the Gradio library (https://gradio.app/) for the web interface.
 - Card generation is powered by OpenAI's language models.
+- Card generation principles inspired by ["An Opinionated Guide to Using Anki Correctly"](https://www.lesswrong.com/posts/7Q7DPSk4iGFJd8DRk/an-opinionated-guide-to-using-anki-correctly) by Luise, which emphasizes atomic card design, standardized prompts, and effective spaced repetition practices.
