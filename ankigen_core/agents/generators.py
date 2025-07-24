@@ -10,7 +10,7 @@ from ankigen_core.logging import logger
 from ankigen_core.models import Card, CardFront, CardBack
 from .base import BaseAgentWrapper
 from .config import get_config_manager
-from .schemas import CardsGenerationSchema
+from .schemas import CardsGenerationSchema, CardSchema
 
 
 class SubjectExpertAgent(BaseAgentWrapper):
@@ -351,6 +351,9 @@ class ContentStructuringAgent(BaseAgentWrapper):
                 "content_structuring configuration not found - agent system not properly initialized"
             )
 
+        # Enable structured output for card structuring
+        base_config.output_type = CardSchema
+
         super().__init__(base_config, openai_client)
 
     async def structure_cards(self, cards: List[Card]) -> List[Card]:
@@ -365,10 +368,21 @@ class ContentStructuringAgent(BaseAgentWrapper):
                 response, usage = await self.execute(user_input)
 
                 try:
-                    structured_data = (
-                        json.loads(response) if isinstance(response, str) else response
-                    )
-                    structured_card = self._parse_structured_card(structured_data, card)
+                    # With structured output, response should already be a CardSchema object
+                    if hasattr(response, "card_type"):
+                        structured_card = self._parse_structured_card(
+                            response.__dict__, card
+                        )
+                    else:
+                        # Fallback for backwards compatibility
+                        structured_data = (
+                            json.loads(response)
+                            if isinstance(response, str)
+                            else response
+                        )
+                        structured_card = self._parse_structured_card(
+                            structured_data, card
+                        )
                     structured_cards.append(structured_card)
                 except Exception as e:
                     logger.warning(f"Failed to structure card {i}: {e}")
@@ -400,28 +414,7 @@ Improve the card's structure and formatting:
 5. Enhance metadata with appropriate tags and categorization
 6. Maintain consistent formatting and style
 
-Return the improved card as JSON:
-{{
-    "card_type": "basic|cloze",
-    "front": {{
-        "question": "Improved, clear question"
-    }},
-    "back": {{
-        "answer": "Complete, well-structured answer",
-        "explanation": "Comprehensive explanation with reasoning",
-        "example": "Relevant, practical example"
-    }},
-    "metadata": {{
-        "topic": "specific topic",
-        "subject": "subject area",
-        "difficulty": "beginner|intermediate|advanced",
-        "tags": ["tag1", "tag2", "tag3"],
-        "learning_outcomes": ["outcome1", "outcome2"],
-        "prerequisites": ["prereq1", "prereq2"],
-        "estimated_time": "time in minutes",
-        "category": "category name"
-    }}
-}}"""
+Return the improved card with the structured output format."""
 
     def _parse_structured_card(
         self, structured_data: Dict[str, Any], original_card: Card
