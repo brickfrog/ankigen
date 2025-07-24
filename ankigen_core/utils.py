@@ -9,7 +9,6 @@ from bs4 import BeautifulSoup
 from functools import lru_cache
 from typing import Any, Optional
 import time
-import re
 
 # --- Logging Setup ---
 _logger_instance = None
@@ -196,11 +195,12 @@ class RateLimiter:
 # def some_other_util_function():
 #     pass
 
-HTML_TAG_REGEX = re.compile(r"<[^>]*>")
-
 
 def strip_html_tags(text: str) -> str:
-    """Removes HTML tags from a string."""
+    """Removes HTML tags from a string using a safe, non-regex approach."""
     if not isinstance(text, str):
         return str(text)  # Ensure it's a string, or return as is if not coercible
-    return HTML_TAG_REGEX.sub("", text).strip()
+
+    # Use BeautifulSoup for safe HTML parsing
+    soup = BeautifulSoup(text, "html.parser")
+    return soup.get_text().strip()
