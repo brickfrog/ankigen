@@ -5,7 +5,7 @@ app_file: app.py
 requirements: requirements.txt
 python: 3.10
 sdk: gradio
-sdk_version: 5.34.2
+sdk_version: 5.38.1
 ---
 
 # AnkiGen - Anki Card Generator
