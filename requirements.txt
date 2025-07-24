@@ -197,7 +197,7 @@ soupsieve==2.7
     # via beautifulsoup4
 sse-starlette==2.3.6
     # via mcp
-starlette==0.46.2
+starlette==0.47.2
     # via
     #   fastapi
     #   gradio
