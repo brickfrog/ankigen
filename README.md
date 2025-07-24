@@ -44,7 +44,7 @@ graph TD
     G --> K[Technical Judge]
     G --> L[Completeness Judge]
     
-    H --> M{All Judges Pass?}
+    H --> M{60% Consensus?}
     I --> M
     J --> M
     K --> M
