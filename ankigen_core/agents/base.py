@@ -102,29 +102,50 @@ class BaseAgentWrapper:
         if not self.agent:
             await self.initialize()
 
+        # Add context to the user input if provided
+        enhanced_input = user_input
+        if context is not None:
+            context_str = "\n".join([f"{k}: {v}" for k, v in context.items()])
+            enhanced_input = f"{user_input}\n\nContext:\n{context_str}"
+
+        # Execute the agent using Runner.run() with retry logic
+        if self.agent is None:
+            raise ValueError("Agent not initialized")
+
+        logger.info(f"🤖 EXECUTING AGENT: {self.config.name}")
+        logger.info(f"📝 INPUT: {enhanced_input[:200]}...")
+
+        import time
+
+        start_time = time.time()
+
+        for attempt in range(self.config.retry_attempts):
+            try:
+                result = await asyncio.wait_for(
+                    Runner.run(
+                        starting_agent=self.agent,
+                        input=enhanced_input,
+                    ),
+                    timeout=self.config.timeout,
+                )
+                break
+            except asyncio.TimeoutError:
+                if attempt < self.config.retry_attempts - 1:
+                    logger.warning(
+                        f"Agent {self.config.name} timed out (attempt {attempt + 1}/{self.config.retry_attempts}), retrying..."
+                    )
+                    continue
+                else:
+                    logger.error(
+                        f"Agent {self.config.name} timed out after {self.config.retry_attempts} attempts"
+                    )
+                    raise
+
         try:
-            # Add context to the user input if provided
-            enhanced_input = user_input
-            if context is not None:
-                context_str = "\n".join([f"{k}: {v}" for k, v in context.items()])
-                enhanced_input = f"{user_input}\n\nContext:\n{context_str}"
-
-            # Execute the agent using Runner.run()
-            if self.agent is None:
-                raise ValueError("Agent not initialized")
-
-            logger.info(f"🤖 EXECUTING AGENT: {self.config.name}")
-            logger.info(f"📝 INPUT: {enhanced_input[:200]}...")
-
-            result = await asyncio.wait_for(
-                Runner.run(
-                    starting_agent=self.agent,
-                    input=enhanced_input,
-                ),
-                timeout=self.config.timeout,
+            execution_time = time.time() - start_time
+            logger.info(
+                f"Agent {self.config.name} executed successfully in {execution_time:.2f}s"
             )
-
-            logger.info(f"Agent {self.config.name} executed successfully")
 
             # Extract usage information from raw_responses
             total_usage = {

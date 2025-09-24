@@ -42,21 +42,95 @@ class SubjectExpertAgent(BaseAgentWrapper):
     async def generate_cards(
         self, topic: str, num_cards: int = 5, context: Optional[Dict[str, Any]] = None
     ) -> List[Card]:
-        """Generate flashcards for a given topic"""
+        """Generate flashcards for a given topic with automatic batching for large requests"""
         try:
-            user_input = f"Generate {num_cards} flashcards for the topic: {topic}"
-            if context:
-                user_input += f"\n\nAdditional context: {context}"
+            # Use batching for large numbers of cards to avoid LLM limitations
+            batch_size = 10  # Generate max 10 cards per batch
+            all_cards = []
+            total_usage = {"total_tokens": 0, "input_tokens": 0, "output_tokens": 0}
 
-            response, usage = await self.execute(user_input, context)
+            cards_remaining = num_cards
+            batch_num = 1
 
-            # Log usage information
-            if usage and usage.get("total_tokens", 0) > 0:
+            logger.info(
+                f"Generating {num_cards} cards for topic '{topic}' using {((num_cards - 1) // batch_size) + 1} batches"
+            )
+
+            # Track card topics from previous batches to avoid duplication
+            previous_card_topics = []
+
+            while cards_remaining > 0:
+                cards_in_this_batch = min(batch_size, cards_remaining)
+
                 logger.info(
-                    f"💰 Token Usage: {usage['total_tokens']} tokens (Input: {usage['input_tokens']}, Output: {usage['output_tokens']})"
+                    f"Generating batch {batch_num}: {cards_in_this_batch} cards"
                 )
 
-            return self._parse_cards_response(response, topic)
+                # Reset agent for each batch to avoid conversation history accumulation
+                self.agent = None
+                await self.initialize()
+
+                user_input = (
+                    f"Generate {cards_in_this_batch} flashcards for the topic: {topic}"
+                )
+                if context:
+                    user_input += f"\n\nAdditional context: {context}"
+
+                # Add previous topics to avoid repetition instead of full conversation history
+                if previous_card_topics:
+                    topics_summary = ", ".join(
+                        previous_card_topics[-20:]
+                    )  # Last 20 topics to keep it manageable
+                    user_input += f"\n\nAvoid creating cards about these already covered topics: {topics_summary}"
+
+                if batch_num > 1:
+                    user_input += f"\n\nThis is batch {batch_num} of cards. Ensure these cards cover different aspects of the topic."
+
+                response, usage = await self.execute(user_input, context)
+
+                # Accumulate usage information
+                if usage:
+                    for key in total_usage:
+                        total_usage[key] += usage.get(key, 0)
+
+                batch_cards = self._parse_cards_response(response, topic)
+                all_cards.extend(batch_cards)
+
+                # Extract topics from generated cards to avoid duplication in next batch
+                for card in batch_cards:
+                    if hasattr(card, "front") and card.front and card.front.question:
+                        # Extract key terms from the question for deduplication
+                        question_words = card.front.question.lower().split()
+                        key_terms = [word for word in question_words if len(word) > 3][
+                            :3
+                        ]  # First 3 meaningful words
+                        if key_terms:
+                            previous_card_topics.append(" ".join(key_terms))
+
+                cards_remaining -= len(batch_cards)
+                batch_num += 1
+
+                logger.info(
+                    f"Batch {batch_num-1} generated {len(batch_cards)} cards. {cards_remaining} cards remaining."
+                )
+
+                # Safety check to prevent infinite loops
+                if len(batch_cards) == 0:
+                    logger.warning(
+                        f"No cards generated in batch {batch_num-1}, stopping generation"
+                    )
+                    break
+
+            # Log final usage information
+            if total_usage.get("total_tokens", 0) > 0:
+                logger.info(
+                    f"💰 Total Token Usage: {total_usage['total_tokens']} tokens (Input: {total_usage['input_tokens']}, Output: {total_usage['output_tokens']})"
+                )
+
+            logger.info(
+                f"✅ Generated {len(all_cards)} cards total across {batch_num-1} batches for topic '{topic}'"
+            )
+            return all_cards
 
         except Exception as e:
             logger.error(f"Card generation failed: {e}")
