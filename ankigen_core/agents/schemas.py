@@ -134,3 +134,50 @@ class TokenUsageSchema(BaseModel):
     total_tokens: int = Field(..., ge=0, description="Total tokens used")
     estimated_cost: float = Field(..., ge=0.0, description="Estimated cost in USD")
     model: str = Field(..., description="Model used for the request")
+
+
+class AutoConfigSchema(BaseModel):
+    """Schema for auto-configuration based on subject analysis"""
+
+    # What to search for in Context7
+    library_search_term: str = Field(
+        ...,
+        description="Library name to search for in Context7 (e.g., 'pandas', 'react', 'tensorflow')",
+    )
+
+    # Specific topic within the library (optional)
+    documentation_focus: Optional[str] = Field(
+        None,
+        description="Specific topic/area within the library documentation to focus on",
+    )
+
+    # Suggested settings based on subject analysis
+    topic_number: int = Field(
+        ..., ge=2, le=20, description="Number of topics to generate (2-20)"
+    )
+    cards_per_topic: int = Field(
+        ..., ge=2, le=30, description="Number of cards per topic (2-30)"
+    )
+    learning_preferences: str = Field(
+        ..., description="Learning preferences and focus areas for card generation"
+    )
+    generate_cloze: bool = Field(
+        ...,
+        description="Whether to generate cloze cards (true for syntax/code, false for concepts)",
+    )
+    model_choice: str = Field(
+        ...,
+        description="Recommended model: 'gpt-4.1' for complex topics, 'gpt-4.1-nano' for simpler topics",
+    )
+
+    # Analysis metadata
+    subject_type: str = Field(
+        ...,
+        description="Type of subject: 'concepts', 'syntax', 'api', 'theory', 'practical'",
+    )
+    scope: str = Field(
+        ..., description="Scope of the subject: 'narrow', 'medium', 'broad'"
+    )
+    rationale: str = Field(
+        ..., description="Brief explanation of why these settings were chosen"
+    )

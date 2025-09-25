@@ -88,32 +88,114 @@ class Context7Client:
         )
 
         if result and result.get("success") and result.get("text"):
-            # Parse the text to extract library ID
             text = result["text"]
-            import re
 
-            # First, look for specific Context7-compatible library ID mentions
+            # Parse the structured response format
+            libraries = []
             lines = text.split("\n")
-            for line in lines:
-                if "Context7-compatible library ID:" in line:
-                    # Extract the ID after the colon
-                    parts = line.split("Context7-compatible library ID:")
-                    if len(parts) > 1:
-                        library_id = parts[1].strip()
-                        if library_id.startswith("/"):
-                            logger.info(
-                                f"Resolved '{library_name}' to ID: {library_id}"
-                            )
-                            return library_id
 
-            # Fallback: Look for library ID pattern but be more specific
-            # Must have actual library names, not generic /org/project
-            matches = re.findall(r"/[\w-]+/[\w.-]+(?:/[\w.-]+)?", text)
-            for match in matches:
-                # Filter out generic placeholders
-                if match != "/org/project" and "example" not in match.lower():
-                    logger.info(f"Resolved '{library_name}' to ID: {match}")
-                    return match
+            current_lib = {}
+            for line in lines:
+                line = line.strip()
+
+                # Parse title
+                if line.startswith("- Title:"):
+                    if current_lib and current_lib.get("id"):
+                        libraries.append(current_lib)
+                    current_lib = {
+                        "title": line.replace("- Title:", "").strip().lower()
+                    }
+
+                # Parse library ID
+                elif line.startswith("- Context7-compatible library ID:"):
+                    lib_id = line.replace(
+                        "- Context7-compatible library ID:", ""
+                    ).strip()
+                    if current_lib is not None:
+                        current_lib["id"] = lib_id
+
+                # Parse code snippets count
+                elif line.startswith("- Code Snippets:"):
+                    snippets_str = line.replace("- Code Snippets:", "").strip()
+                    try:
+                        snippets = int(snippets_str)
+                        if current_lib is not None:
+                            current_lib["snippets"] = snippets
+                    except ValueError:
+                        pass
+
+                # Parse trust score
+                elif line.startswith("- Trust Score:"):
+                    score_str = line.replace("- Trust Score:", "").strip()
+                    try:
+                        trust = float(score_str)
+                        if current_lib is not None:
+                            current_lib["trust"] = trust
+                    except ValueError:
+                        pass
+
+            # Add the last library if exists
+            if current_lib and current_lib.get("id"):
+                libraries.append(current_lib)
+
+            # If we found libraries, pick the best match
+            if libraries:
+                search_term = library_name.lower()
+
+                # Score each library
+                best_lib = None
+                best_score = -1
+
+                for lib in libraries:
+                    score = 0
+                    lib_title = lib.get("title", "")
+                    lib_id = lib["id"].lower()
+
+                    # Exact title match gets highest priority
+                    if lib_title == search_term:
+                        score += 10000
+                    # Check if it's exactly "pandas" in the path (not geopandas, etc)
+                    elif lib_id == f"/{search_term}-dev/{search_term}":
+                        score += 5000
+                    elif f"/{search_term}/" in lib_id or lib_id.endswith(
+                        f"/{search_term}"
+                    ):
+                        score += 2000
+                    # Partial title match (but penalize if it's a compound like "geopandas")
+                    elif search_term in lib_title:
+                        if lib_title == search_term:
+                            score += 1000
+                        elif lib_title.startswith(search_term):
+                            score += 200
+                        else:
+                            score += 50
+
+                    # Strong bonus for code snippets (indicates main library)
+                    snippets = lib.get("snippets", 0)
+                    score += snippets / 10  # Pandas has 7386 snippets
+
+                    # Significant bonus for trust score (high trust = official/authoritative)
+                    trust = lib.get("trust", 0)
+                    score += trust * 100  # Trust 9.2 = 920 points, Trust 7 = 700 points
+
+                    # Debug logging
+                    if search_term in lib_title or search_term in lib_id:
+                        logger.debug(
+                            f"Scoring {lib['id']}: title='{lib_title}', snippets={snippets}, "
+                            f"trust={trust}, score={score:.2f}"
+                        )
+
+                    if score > best_score:
+                        best_score = score
+                        best_lib = lib
+
+                if best_lib:
+                    logger.info(
+                        f"Resolved '{library_name}' to ID: {best_lib['id']} "
+                        f"(title: {best_lib.get('title', 'unknown')}, snippets: {best_lib.get('snippets', 0)}, "
+                        f"trust: {best_lib.get('trust', 0)}, score: {best_score:.2f})"
+                    )
+                    return best_lib["id"]
 
         logger.warning(f"Could not resolve library ID for '{library_name}'")
         return None

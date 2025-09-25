@@ -29,6 +29,7 @@ from ankigen_core.utils import (
     ResponseCache,
     get_logger,
 )  # fetch_webpage_text is used by card_generator
+from ankigen_core.auto_config import AutoConfigService
 
 # --- Initialization ---
 logger = get_logger()
@@ -203,6 +204,10 @@ def create_ankigen_interface():
                                 label="Subject",
                                 placeholder="e.g., 'Basic SQL Concepts'",
                             )
+                            auto_fill_btn = gr.Button(
+                                "Auto-fill",
+                                variant="secondary",
+                            )
                         with gr.Group(visible=False) as path_mode:
                             description = gr.Textbox(
                                 label="Learning Goal",
@@ -258,9 +263,10 @@ def create_ankigen_interface():
                         )
 
                         # Context7 Library Documentation
-                        with gr.Accordion(
+                        library_accordion = gr.Accordion(
                             "Library Documentation (optional)", open=False
-                        ):
+                        )
+                        with library_accordion:
                             library_name_input = gr.Textbox(
                                 label="Library Name",
                                 placeholder="e.g., 'react', 'tensorflow', 'pandas'",
@@ -679,6 +685,84 @@ def create_ankigen_interface():
                 inputs=[output, subject],  # Added subject as input
                 outputs=[download_file_output],
                 api_name="export_main_to_apkg",
+            )
+
+            # Auto-fill handler
+            async def handle_auto_fill_click(
+                subject_text: str,
+                api_key: str,
+                progress=gr.Progress(track_tqdm=True),
+            ):
+                """Handle auto-fill button click to populate all settings"""
+                if not subject_text or not subject_text.strip():
+                    gr.Warning("Please enter a subject first")
+                    return [gr.update()] * 8  # Return no updates for all outputs
+
+                if not api_key:
+                    gr.Warning("OpenAI API key is required for auto-configuration")
+                    return [gr.update()] * 8
+
+                try:
+                    progress(0, desc="Analyzing subject...")
+
+                    # Initialize OpenAI client
+                    await client_manager.initialize_client(api_key)
+                    openai_client = client_manager.get_client()
+
+                    # Get auto-configuration
+                    auto_config_service = AutoConfigService()
+                    config = await auto_config_service.auto_configure(
+                        subject_text, openai_client
+                    )
+
+                    if not config:
+                        gr.Warning("Could not generate configuration")
+                        return [gr.update()] * 8
+
+                    # Return updates for all relevant UI components
+                    return (
+                        gr.update(
+                            value=config.get("library_name", "")
+                        ),  # library_name_input
+                        gr.update(
+                            value=config.get("library_topic", "")
+                        ),  # library_topic_input
+                        gr.update(value=config.get("topic_number", 3)),  # topic_number
+                        gr.update(
+                            value=config.get("cards_per_topic", 5)
+                        ),  # cards_per_topic
+                        gr.update(
+                            value=config.get("preference_prompt", "")
+                        ),  # preference_prompt
+                        gr.update(
+                            value=config.get("generate_cloze_checkbox", False)
+                        ),  # generate_cloze_checkbox
+                        gr.update(
+                            value=config.get("model_choice", "gpt-4.1-nano")
+                        ),  # model_choice
+                        gr.update(
+                            open=True
+                        ),  # Open the Library Documentation accordion
+                    )
+
+                except Exception as e:
+                    logger.error(f"Auto-configuration failed: {e}", exc_info=True)
+                    gr.Error(f"Auto-configuration failed: {str(e)}")
+                    return [gr.update()] * 8
+
+            auto_fill_btn.click(
+                fn=handle_auto_fill_click,
+                inputs=[subject, api_key_input],
+                outputs=[
+                    library_name_input,
+                    library_topic_input,
+                    topic_number,
+                    cards_per_topic,
+                    preference_prompt,
+                    generate_cloze_checkbox,
+                    model_choice,
+                    library_accordion,  # Reference to the accordion component
+                ],
             )
 
             async def handle_web_crawl_click(

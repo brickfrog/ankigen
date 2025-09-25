@@ -72,8 +72,30 @@ class AgentOrchestrator:
                 logger.info(f"Fetching library documentation for: {library_name}")
                 try:
                     context7_client = Context7Client()
+
+                    # Dynamic token allocation based on card generation needs
+                    # More cards need more comprehensive documentation
+                    base_tokens = 8000  # Increased base from 5000
+                    if num_cards > 40:
+                        token_limit = 12000  # Large card sets need more context
+                    elif num_cards > 20:
+                        token_limit = 10000  # Medium sets
+                    else:
+                        token_limit = base_tokens  # Small sets
+
+                    # If topic is specified, we can be more focused and use fewer tokens
+                    if library_topic:
+                        token_limit = int(
+                            token_limit * 0.8
+                        )  # Can be more efficient with focused retrieval
+
+                    logger.info(
+                        f"Fetching {token_limit} tokens of documentation"
+                        + (f" for topic: {library_topic}" if library_topic else "")
+                    )
+
                     library_docs = await context7_client.fetch_library_documentation(
-                        library_name, topic=library_topic, tokens=5000
+                        library_name, topic=library_topic, tokens=token_limit
                     )
 
                     if library_docs:
