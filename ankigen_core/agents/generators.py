@@ -115,6 +115,11 @@ class SubjectExpertAgent(BaseAgentWrapper):
                 user_input = (
                     f"Generate {cards_in_this_batch} flashcards for the topic: {topic}"
                 )
+
+                # Add cloze generation instruction if enabled
+                if context and context.get("generate_cloze"):
+                    user_input += "\n\nIMPORTANT: Generate a mix of card types including cloze cards. For code examples, syntax, and fill-in-the-blank concepts, use cloze cards (card_type='cloze'). Aim for roughly 50% cloze cards when dealing with technical/programming content."
+
                 if context:
                     user_input += f"\n\nAdditional context: {context}"
 

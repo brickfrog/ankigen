@@ -51,6 +51,7 @@ class AgentOrchestrator:
         context: Dict[str, Any] = None,
         library_name: Optional[str] = None,
         library_topic: Optional[str] = None,
+        generate_cloze: bool = False,
     ) -> Tuple[List[Card], Dict[str, Any]]:
         """Generate cards using the agent system"""
         start_time = datetime.now()
@@ -114,6 +115,7 @@ class AgentOrchestrator:
                 num_cards=num_cards,
                 difficulty=difficulty,
                 context=enhanced_context,
+                generate_cloze=generate_cloze,
             )
 
             # Collect metadata
@@ -144,16 +146,18 @@ class AgentOrchestrator:
         num_cards: int,
         difficulty: str,
         context: Dict[str, Any] = None,
+        generate_cloze: bool = False,
     ) -> List[Card]:
         """Execute the card generation phase"""
 
         if not self.subject_expert or self.subject_expert.subject != subject:
             self.subject_expert = SubjectExpertAgent(self.openai_client, subject)
 
-        # Add difficulty to context if needed
+        # Add difficulty and cloze preference to context
         if context is None:
             context = {}
         context["difficulty"] = difficulty
+        context["generate_cloze"] = generate_cloze
 
         cards = await self.subject_expert.generate_cards(
             topic=topic, num_cards=num_cards, context=context

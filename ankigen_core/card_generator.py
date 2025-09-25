@@ -131,6 +131,7 @@ async def orchestrate_card_generation(  # MODIFIED: Added async
                 context=context,
                 library_name=library_name,
                 library_topic=library_topic,
+                generate_cloze=generate_cloze,
             )
 
             # Get token usage from session
