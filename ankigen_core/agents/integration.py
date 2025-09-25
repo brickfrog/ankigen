@@ -8,9 +8,8 @@ from ankigen_core.logging import logger
 from ankigen_core.models import Card
 from ankigen_core.llm_interface import OpenAIClientManager
 
-from .generators import GenerationCoordinator, SubjectExpertAgent
-from .judges import JudgeCoordinator
-from .enhancers import RevisionAgent, EnhancementAgent
+from .generators import SubjectExpertAgent, QualityReviewAgent
+from ankigen_core.agents.config import get_config_manager
 
 
 class AgentOrchestrator:
@@ -20,14 +19,8 @@ class AgentOrchestrator:
         self.client_manager = client_manager
         self.openai_client = None
 
-        # Initialize coordinators
-        self.generation_coordinator = None
-        self.judge_coordinator = None
-        self.revision_agent = None
-        self.enhancement_agent = None
-
-        # All agents enabled by default
-        self.all_agents_enabled = True
+        self.subject_expert = None
+        self.quality_reviewer = None
 
     async def initialize(self, api_key: str, model_overrides: Dict[str, str] = None):
         """Initialize the agent system"""
@@ -44,13 +37,7 @@ class AgentOrchestrator:
                 config_manager.update_models(model_overrides)
                 logger.info(f"Applied model overrides: {model_overrides}")
 
-            # Initialize all agents
-            self.generation_coordinator = GenerationCoordinator(self.openai_client)
-            self.judge_coordinator = JudgeCoordinator(self.openai_client)
-            self.revision_agent = RevisionAgent(self.openai_client)
-            self.enhancement_agent = EnhancementAgent(self.openai_client)
-
-            logger.info("Agent system initialized successfully")
+            logger.info("Agent system initialized successfully (simplified pipeline)")
 
         except Exception as e:
             logger.error(f"Failed to initialize agent system: {e}")
@@ -69,14 +56,11 @@ class AgentOrchestrator:
         start_time = datetime.now()
 
         try:
-            # Agents are always enabled now
-
             if not self.openai_client:
                 raise ValueError("Agent system not initialized")
 
             logger.info(f"Starting agent-based card generation: {topic} ({subject})")
 
-            # Phase 1: Generation
             cards = await self._generation_phase(
                 topic=topic,
                 subject=subject,
@@ -85,21 +69,16 @@ class AgentOrchestrator:
                 context=context,
             )
 
-            # Phase 2: Quality Assessment
-            quality_results = {}
-            if enable_quality_pipeline and self.judge_coordinator:
-                cards, quality_results = await self._quality_phase(cards)
-
-            # Phase 3: Enhancement
-            if self.enhancement_agent:
-                cards = await self._enhancement_phase(cards)
+            review_results = {}
+            if enable_quality_pipeline:
+                cards, review_results = await self._quality_review_phase(cards)
 
             # Collect metadata
             metadata = {
                 "generation_method": "agent_system",
                 "generation_time": (datetime.now() - start_time).total_seconds(),
                 "cards_generated": len(cards),
-                "quality_results": quality_results,
+                "review_results": review_results,
                 "topic": topic,
                 "subject": subject,
                 "difficulty": difficulty,
@@ -124,116 +103,67 @@ class AgentOrchestrator:
     ) -> List[Card]:
         """Execute the card generation phase"""
 
-        if self.generation_coordinator:
-            # Use coordinated multi-agent generation
-            cards = await self.generation_coordinator.coordinate_generation(
-                topic=topic,
-                subject=subject,
-                num_cards=num_cards,
-                difficulty=difficulty,
-                enable_review=True,
-                enable_structuring=True,
-                context=context,
-            )
-        else:
-            # Use subject expert agent directly
-            subject_expert = SubjectExpertAgent(self.openai_client, subject)
-            cards = await subject_expert.generate_cards(
-                topic=topic, num_cards=num_cards, difficulty=difficulty, context=context
-            )
+        if not self.subject_expert or self.subject_expert.subject != subject:
+            self.subject_expert = SubjectExpertAgent(self.openai_client, subject)
+
+        cards = await self.subject_expert.generate_cards(
+            topic=topic, num_cards=num_cards, difficulty=difficulty, context=context
+        )
 
         logger.info(f"Generation phase complete: {len(cards)} cards generated")
         return cards
 
-    async def _quality_phase(
+    async def _quality_review_phase(
         self, cards: List[Card]
     ) -> Tuple[List[Card], Dict[str, Any]]:
-        """Execute the quality assessment and improvement phase"""
+        """Perform a single quality-review pass with optional fixes."""
 
-        if not self.judge_coordinator:
-            return cards, {"message": "Judge coordinator not available"}
+        if not cards:
+            return cards, {"message": "No cards to review"}
 
-        logger.info(f"Starting quality assessment for {len(cards)} cards")
+        logger.info(f"Performing quality review for {len(cards)} cards")
 
-        # Judge all cards
-        judge_results = await self.judge_coordinator.coordinate_judgment(
-            cards=cards,
-            enable_parallel=True,
-            min_consensus=0.6,
-        )
+        if not self.quality_reviewer:
+            # Use the same model as the subject expert by default.
+            subject_config = get_config_manager().get_agent_config("subject_expert")
+            reviewer_model = subject_config.model if subject_config else "gpt-4.1"
+            self.quality_reviewer = QualityReviewAgent(
+                self.openai_client, reviewer_model
+            )
 
-        # Separate approved and rejected cards
-        approved_cards = []
-        rejected_cards = []
+        reviewed_cards: List[Card] = []
+        approvals: List[Dict[str, Any]] = []
 
-        for card, decisions, approved in judge_results:
+        for card in cards:
+            reviewed_card, approved, reason = await self.quality_reviewer.review_card(
+                card
+            )
             if approved:
-                approved_cards.append(card)
+                reviewed_cards.append(reviewed_card)
             else:
-                rejected_cards.append((card, decisions))
+                approvals.append(
+                    {
+                        "question": card.front.question if card.front else "",
+                        "reason": reason,
+                    }
+                )
 
-        # Attempt to revise rejected cards
-        revised_cards = []
-        if self.revision_agent and rejected_cards:
-            logger.info(f"Attempting to revise {len(rejected_cards)} rejected cards")
-
-            for card, decisions in rejected_cards:
-                try:
-                    revised_card = await self.revision_agent.revise_card(
-                        card=card,
-                        judge_decisions=decisions,
-                        max_iterations=2,
-                    )
-
-                    # Re-judge the revised card
-                    revision_results = await self.judge_coordinator.coordinate_judgment(
-                        cards=[revised_card],
-                        enable_parallel=False,  # Single card, no need for parallel
-                        min_consensus=0.6,
-                    )
-
-                    if revision_results and revision_results[0][2]:  # If approved
-                        revised_cards.append(revised_card)
-                    else:
-                        logger.warning(
-                            f"Revised card still rejected: {card.front.question[:50]}..."
-                        )
-
-                except Exception as e:
-                    logger.error(f"Failed to revise card: {e}")
-
-        # Combine approved and successfully revised cards
-        final_cards = approved_cards + revised_cards
-
-        # Prepare quality results
-        quality_results = {
-            "total_cards_judged": len(cards),
-            "initially_approved": len(approved_cards),
-            "initially_rejected": len(rejected_cards),
-            "successfully_revised": len(revised_cards),
-            "final_approval_rate": len(final_cards) / len(cards) if cards else 0,
-            "judge_decisions": len(judge_results),
+        review_results = {
+            "total_cards_reviewed": len(cards),
+            "approved_cards": len(reviewed_cards),
+            "rejected_cards": approvals,
         }
 
-        logger.info(
-            f"Quality phase complete: {len(final_cards)}/{len(cards)} cards approved"
-        )
-        return final_cards, quality_results
+        if approvals:
+            logger.warning(
+                "Quality review rejected cards: %s",
+                "; ".join(
+                    f"{entry['question'][:50]}… ({entry['reason']})"
+                    for entry in approvals
+                ),
+            )
 
-    async def _enhancement_phase(self, cards: List[Card]) -> List[Card]:
-        """Execute the enhancement phase"""
-
-        if not self.enhancement_agent:
-            return cards
-
-        logger.info(f"Starting enhancement for {len(cards)} cards")
-
-        enhanced_cards = await self.enhancement_agent.enhance_card_batch(
-            cards=cards, enhancement_targets=["explanation", "example", "metadata"]
-        )
-
-        logger.info(f"Enhancement phase complete: {len(enhanced_cards)} cards enhanced")
-        return enhanced_cards
+        return reviewed_cards, review_results
 
     def get_performance_metrics(self) -> Dict[str, Any]:
         """Get performance metrics for the agent system"""

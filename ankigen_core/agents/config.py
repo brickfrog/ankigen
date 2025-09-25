@@ -54,7 +54,6 @@ class AgentConfigManager:
         self.configs: Dict[str, AgentConfig] = {}
         self.prompt_templates: Dict[str, AgentPromptTemplate] = {}
 
-        # Set up Jinja2 environment with templates directory
         template_dir = Path(__file__).parent / "templates"
         self.jinja_env = Environment(loader=FileSystemLoader(template_dir))
         self._load_default_configs()
@@ -66,18 +65,15 @@ class AgentConfigManager:
         logger.info(f"Updated model overrides: {model_overrides}")
 
     def update_template_vars(self, template_vars: Dict[str, Any]):
-        """Update template variables and regenerate configs"""
-        self.template_vars = template_vars
-        self._load_default_configs()
-        logger.info(f"Updated template variables: {template_vars}")
+        logger.info(
+            "Template vars are no longer used in the simplified agent pipeline."
+        )
 
     def _load_default_configs(self):
         """Load all default configurations from Jinja templates"""
         try:
             self._load_configs_from_template("generators.j2")
-            self._load_configs_from_template("judges.j2")
-            self._load_configs_from_template("enhancers.j2")
-            self._load_prompt_templates_from_template("prompts.j2")
+            self.prompt_templates.clear()
             logger.info(
                 f"Loaded {len(self.configs)} agent configurations from Jinja templates"
             )
@@ -96,17 +92,6 @@ class AgentConfigManager:
             # Default models for each agent type
             default_models = {
                 "subject_expert_model": "gpt-4.1",
-                "pedagogical_agent_model": "gpt-4.1-nano",
-                "content_structuring_model": "gpt-4.1-nano",
-                "generation_coordinator_model": "gpt-4.1",
-                "content_accuracy_judge_model": "gpt-4.1-nano",
-                "pedagogical_judge_model": "gpt-4.1-nano",
-                "clarity_judge_model": "gpt-4.1-nano",
-                "technical_judge_model": "gpt-4.1-nano",
-                "completeness_judge_model": "gpt-4.1-nano",
-                "judge_coordinator_model": "gpt-4.1",
-                "revision_agent_model": "gpt-4.1",
-                "enhancement_agent_model": "gpt-4.1",
             }
 
             # Simple mapping: agent_name -> agent_name_model
@@ -139,29 +124,6 @@ class AgentConfigManager:
 
         except Exception as e:
             logger.error(f"Failed to load configs from template {template_name}: {e}")
-
-    def _load_prompt_templates_from_template(self, template_name: str):
-        """Load prompt templates from a Jinja template"""
-        try:
-            template = self.jinja_env.get_template(template_name)
-
-            # Render with current template variables
-            rendered_json = template.render(**self.template_vars)
-            template_data = json.loads(rendered_json)
-
-            # Create AgentPromptTemplate objects
-            for template_name, template_info in template_data.items():
-                prompt_template = AgentPromptTemplate(
-                    system_prompt=template_info.get("system_prompt", ""),
-                    user_prompt_template=template_info.get("user_prompt_template", ""),
-                    variables=template_info.get("variables", {}),
-                )
-                self.prompt_templates[template_name] = prompt_template
-
-        except Exception as e:
-            logger.error(
-                f"Failed to load prompt templates from template {template_name}: {e}"
-            )
 
     def get_agent_config(self, agent_name: str) -> Optional[AgentConfig]:
         """Get configuration for a specific agent"""

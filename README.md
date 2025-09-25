@@ -10,7 +10,7 @@ sdk_version: 5.38.1
 
 # AnkiGen - Anki Card Generator
 
-AnkiGen is a Gradio-based web application that generates high-quality Anki-compatible CSV and `.apkg` deck files using an advanced multi-agent system powered by OpenAI Agents. The system employs specialized generator agents, quality assessment judges, and enhancement agents to create superior flashcards.
+AnkiGen is a Gradio-based web application that generates high-quality Anki-compatible CSV and `.apkg` deck files using the OpenAI Agents SDK. The system leans on a specialized subject expert agent plus a lightweight self-review step to create solid flashcards without an expensive multi-agent cascade.
 
 ## Features
 
@@ -113,12 +113,10 @@ The codebase uses a sophisticated multi-agent architecture powered by the OpenAI
 
 -   `app.py`: Main Gradio application interface and event handling.
 -   `ankigen_core/`: Directory containing the core logic modules:
-    -   `agents/`: **OpenAI Agents system implementation**:
-        -   `base.py`: Base agent wrapper and configuration classes
-        -   `generators.py`: Specialized generator agents (SubjectExpertAgent, PedagogicalAgent, ContentStructuringAgent)
-        -   `judges.py`: Quality assessment agents (ContentAccuracyJudge, PedagogicalJudge, ClarityJudge, etc.)
-        -   `enhancers.py`: Revision and enhancement agents for card improvement
-        -   `integration.py`: AgentOrchestrator for coordinating the entire agent system
+        -   `agents/`: **OpenAI Agents system implementation**:
+            -   `base.py`: Base agent wrapper and configuration classes
+            -   `generators.py`: SubjectExpertAgent for primary card creation
+            -   `integration.py`: AgentOrchestrator for orchestrating generation + self-review
         -   `config.py`: Agent configuration management
         -   `schemas.py`: Pydantic schemas for structured agent outputs
         -   `templates/`: Jinja2 templates for agent prompts
@@ -139,26 +137,11 @@ The codebase uses a sophisticated multi-agent architecture powered by the OpenAI
 
 AnkiGen employs a sophisticated multi-agent system built on the OpenAI Agents SDK that ensures high-quality flashcard generation through specialized roles and quality control:
 
-### Generator Agents
-- **SubjectExpertAgent**: Provides domain-specific expertise for accurate content creation
-- **PedagogicalAgent**: Ensures cards follow effective learning principles and memory techniques
-- **ContentStructuringAgent**: Optimizes card structure, formatting, and information hierarchy
-
-### Quality Assurance Judges
-- **ContentAccuracyJudge**: Verifies factual correctness and subject matter accuracy
-- **PedagogicalJudge**: Evaluates learning effectiveness and educational value
-- **ClarityJudge**: Assesses readability, comprehension, and clear communication
-- **TechnicalJudge**: Reviews technical accuracy for specialized subjects
-- **CompletenessJudge**: Ensures comprehensive coverage without information gaps
-
-### Enhancement Agents
-- **RevisionAgent**: Identifies areas for improvement based on judge feedback
-- **EnhancementAgent**: Implements refinements and optimizations to failed cards
+### Generator Agent
+- **SubjectExpertAgent**: Provides domain-specific expertise for accurate content creation, followed by a single lightweight quality review that can revise or drop weak cards.
 
 ### Orchestration
-- **GenerationCoordinator**: Manages the card generation workflow and agent handoffs
-- **JudgeCoordinator**: Coordinates quality assessment across all judge agents
-- **AgentOrchestrator**: Main system controller that initializes and manages the entire agent ecosystem
+- **AgentOrchestrator**: Main system controller that initializes the simplified agent pipeline and runs self-review before returning cards.
 
 This architecture ensures that every generated flashcard undergoes rigorous quality control and iterative improvement, resulting in superior learning materials.
 

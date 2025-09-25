@@ -97,34 +97,14 @@ async def orchestrate_card_generation(  # MODIFIED: Added async
     if AGENTS_AVAILABLE:
         logger.info("🤖 Using agent system for card generation")
         try:
-            # Initialize token tracker
             from ankigen_core.agents.token_tracker import get_token_tracker
 
             token_tracker = get_token_tracker()
 
-            # Initialize agent orchestrator with the actual model from UI
-            # Initialize orchestrator with model overrides
             orchestrator = AgentOrchestrator(client_manager)
 
-            # Set model overrides for all agents
-            logger.info(f"Overriding all agent models to use: {model_name}")
-            model_overrides = {
-                "generation_coordinator": model_name,
-                "subject_expert": model_name,
-                "pedagogical_agent": model_name,
-                "content_structuring": model_name,
-                "enhancement_agent": model_name,
-                "revision_agent": model_name,
-                "content_accuracy_judge": model_name,
-                "pedagogical_judge": model_name,
-                "clarity_judge": model_name,
-                "technical_judge": model_name,
-                "completeness_judge": model_name,
-                "judge_coordinator": model_name,
-            }
-
-            # Initialize with model overrides
-            await orchestrator.initialize(api_key_input, model_overrides)
+            logger.info(f"Using {model_name} for SubjectExpertAgent")
+            await orchestrator.initialize(api_key_input, {"subject_expert": model_name})
 
             # Map generation mode to subject
             agent_subject = "general"
@@ -135,20 +115,17 @@ async def orchestrate_card_generation(  # MODIFIED: Added async
             elif generation_mode == "text":
                 agent_subject = "content_analysis"
 
-            # Calculate total cards needed
             total_cards_needed = topic_number * cards_per_topic
 
-            # Prepare context for text mode
             context = {}
             if generation_mode == "text" and source_text:
                 context["source_text"] = source_text
 
-            # Generate cards with agents using the actual model from UI
             agent_cards, agent_metadata = await orchestrator.generate_cards_with_agents(
                 topic=subject if subject else "Mixed Topics",
                 subject=agent_subject,
                 num_cards=total_cards_needed,
-                difficulty="intermediate",  # Could be made configurable
+                difficulty="intermediate",
                 enable_quality_pipeline=True,
                 context=context,
             )
