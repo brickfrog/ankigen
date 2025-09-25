@@ -9,8 +9,7 @@ from ankigen_core.models import Card
 from ankigen_core.llm_interface import OpenAIClientManager
 from ankigen_core.context7 import Context7Client
 
-from .generators import SubjectExpertAgent, QualityReviewAgent
-from ankigen_core.agents.config import get_config_manager
+from .generators import SubjectExpertAgent
 
 
 class AgentOrchestrator:
@@ -21,7 +20,6 @@ class AgentOrchestrator:
         self.openai_client = None
 
         self.subject_expert = None
-        self.quality_reviewer = None
 
     async def initialize(self, api_key: str, model_overrides: Dict[str, str] = None):
         """Initialize the agent system"""
@@ -50,7 +48,6 @@ class AgentOrchestrator:
         subject: str = "general",
         num_cards: int = 5,
         difficulty: str = "intermediate",
-        enable_quality_pipeline: bool = True,
         context: Dict[str, Any] = None,
         library_name: Optional[str] = None,
         library_topic: Optional[str] = None,
@@ -119,16 +116,11 @@ class AgentOrchestrator:
                 context=enhanced_context,
             )
 
-            review_results = {}
-            if enable_quality_pipeline:
-                cards, review_results = await self._quality_review_phase(cards)
-
             # Collect metadata
             metadata = {
                 "generation_method": "agent_system",
                 "generation_time": (datetime.now() - start_time).total_seconds(),
                 "cards_generated": len(cards),
-                "review_results": review_results,
                 "topic": topic,
                 "subject": subject,
                 "difficulty": difficulty,
@@ -169,58 +161,6 @@ class AgentOrchestrator:
 
         logger.info(f"Generation phase complete: {len(cards)} cards generated")
         return cards
-
-    async def _quality_review_phase(
-        self, cards: List[Card]
-    ) -> Tuple[List[Card], Dict[str, Any]]:
-        """Perform a single quality-review pass with optional fixes."""
-
-        if not cards:
-            return cards, {"message": "No cards to review"}
-
-        logger.info(f"Performing quality review for {len(cards)} cards")
-
-        if not self.quality_reviewer:
-            # Use the same model as the subject expert by default.
-            subject_config = get_config_manager().get_agent_config("subject_expert")
-            reviewer_model = subject_config.model if subject_config else "gpt-4.1"
-            self.quality_reviewer = QualityReviewAgent(
-                self.openai_client, reviewer_model
-            )
-
-        reviewed_cards: List[Card] = []
-        approvals: List[Dict[str, Any]] = []
-
-        for card in cards:
-            reviewed_card, approved, reason = await self.quality_reviewer.review_card(
-                card
-            )
-            if approved:
-                reviewed_cards.append(reviewed_card)
-            else:
-                approvals.append(
-                    {
-                        "question": card.front.question if card.front else "",
-                        "reason": reason,
-                    }
-                )
-
-        review_results = {
-            "total_cards_reviewed": len(cards),
-            "approved_cards": len(reviewed_cards),
-            "rejected_cards": approvals,
-        }
-
-        if approvals:
-            logger.warning(
-                "Quality review rejected cards: %s",
-                "; ".join(
-                    f"{entry['question'][:50]}… ({entry['reason']})"
-                    for entry in approvals
-                ),
-            )
-
-        return reviewed_cards, review_results
 
     def get_performance_metrics(self) -> Dict[str, Any]:
         """Get performance metrics for the agent system"""

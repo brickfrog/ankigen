@@ -128,7 +128,6 @@ async def orchestrate_card_generation(  # MODIFIED: Added async
                 subject=agent_subject,
                 num_cards=total_cards_needed,
                 difficulty="intermediate",
-                enable_quality_pipeline=True,
                 context=context,
                 library_name=library_name,
                 library_topic=library_topic,
