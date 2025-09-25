@@ -182,8 +182,8 @@ def create_ankigen_interface():
         js=js_storage,
     ) as ankigen:
         with gr.Column(elem_classes="contain"):
-            gr.Markdown("# 📚 AnkiGen - Advanced Anki Card Generator")
-            gr.Markdown("#### Generate comprehensive Anki flashcards using AI.")
+            gr.Markdown("# 📚 AnkiGen - Anki Card Generator")
+            gr.Markdown("#### Generate Anki flashcards using AI.")
 
             with gr.Accordion("Configuration Settings", open=True):
                 with gr.Row():

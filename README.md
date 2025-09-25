@@ -10,7 +10,7 @@ sdk_version: 5.38.1
 
 # AnkiGen - Anki Card Generator
 
-AnkiGen is a Gradio-based web application that generates high-quality Anki flashcards using OpenAI's GPT models. It creates CSV and `.apkg` deck files with intelligent subject-specific card generation and quality review.
+AnkiGen is a Gradio-based web application that generates Anki flashcards using OpenAI's GPT models. It creates CSV and `.apkg` deck files with subject-specific card generation.
 
 ## Features
 

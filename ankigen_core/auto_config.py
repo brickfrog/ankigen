@@ -17,9 +17,9 @@ class AutoConfigService:
     async def analyze_subject(
         self, subject: str, openai_client: AsyncOpenAI
     ) -> AutoConfigSchema:
-        """Analyze a subject string and return optimal configuration settings"""
+        """Analyze a subject string and return configuration settings"""
 
-        system_prompt = """You are an expert educational content analyzer specializing in spaced repetition learning. Analyze the given subject and determine optimal flashcard generation settings that focus on ESSENTIAL, HIGH-VALUE concepts.
+        system_prompt = """You are an educational content analyzer specializing in spaced repetition learning. Analyze the given subject and determine flashcard generation settings that focus on ESSENTIAL concepts.
 
 CRITICAL PRINCIPLE: Quality over quantity. Focus on fundamental concepts that unlock understanding, not trivial facts.
 
@@ -29,11 +29,11 @@ Consider:
    - "Basic Pandas Dataframe" → documentation_focus: "dataframe basics, creation, indexing"
    - "React hooks tutorial" → documentation_focus: "hooks, useState, useEffect"
    - "Docker networking" → documentation_focus: "networking, network drivers, container communication"
-3. Identify the scope: narrow (specific feature), medium (several related topics), broad (comprehensive overview)
+3. Identify the scope: narrow (specific feature), medium (several related topics), broad (full overview)
 4. Determine content type: concepts (theory/understanding), syntax (code/commands), api (library usage), practical (hands-on skills)
-5. Suggest optimal number of topics and cards - aim for comprehensive learning (30-60 total cards minimum)
+5. Suggest number of topics and cards - aim for thorough learning (30-60 total cards minimum)
 6. Recommend cloze cards for syntax/code, basic cards for concepts
-7. Choose model based on complexity: gpt-4.1 for complex/advanced, gpt-4.1-nano for basic/simple
+7. Choose model based on complexity: gpt-4.1 for complex topics, gpt-4.1-nano for basic/simple
 
 IMPORTANT - Focus on HIGH-VALUE topics:
 - GOOD topics: Core concepts, fundamental principles, mental models, design patterns, key abstractions
@@ -45,18 +45,18 @@ Guidelines for settings (MINIMUM 30 cards total):
 - Medium scope: 5-7 core topics with 7-9 cards each (35-63 cards)
 - Broad scope: 6-8 fundamental topics with 6-8 cards each (36-64 cards)
 - "Basic"/"Introduction" keywords: Start with fundamentals, 40-50 cards total
-- "Advanced"/"Complex" keywords: Deep dive into critical concepts, 45-60 cards
+- "Complex" keywords: Deep dive into critical concepts, 45-60 cards
 
 Learning preference suggestions:
 - For basics: "Focus on fundamental concepts and mental models that form the foundation"
 - For practical: "Emphasize core patterns and principles with real-world applications"
 - For theory: "Build deep conceptual understanding with progressive complexity"
 
-Documentation focus examples (be specific and comprehensive):
+Documentation focus examples (be specific and thorough):
 - "Basic Pandas Dataframe" → "dataframe creation, indexing, selection, basic operations, data types"
 - "React hooks" → "useState, useEffect, custom hooks, hook rules, common patterns"
 - "Docker basics" → "containers, images, Dockerfile, volumes, basic networking"
-- "Advanced TypeScript" → "generics, conditional types, mapped types, utility types, type inference"
+- "TypeScript types" → "generics, conditional types, mapped types, utility types, type inference"
 
 Return a JSON object matching the AutoConfigSchema."""
 
@@ -65,7 +65,7 @@ Return a JSON object matching the AutoConfigSchema."""
 Extract:
 1. The library name if mentioned
 2. The specific documentation focus (what aspects of the library to focus on)
-3. Optimal settings for effective learning
+3. Suggested settings for effective learning
 
 Provide a brief rationale for your choices."""
 

@@ -72,7 +72,7 @@ class AgentOrchestrator:
                     context7_client = Context7Client()
 
                     # Dynamic token allocation based on card generation needs
-                    # More cards need more comprehensive documentation
+                    # More cards need more thorough documentation
                     base_tokens = 8000  # Increased base from 5000
                     if num_cards > 40:
                         token_limit = 12000  # Large card sets need more context
