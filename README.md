@@ -10,178 +10,84 @@ sdk_version: 5.38.1
 
 # AnkiGen - Anki Card Generator
 
-AnkiGen is a Gradio-based web application that generates high-quality Anki-compatible CSV and `.apkg` deck files using the OpenAI Agents SDK. The system leans on a specialized subject expert agent plus a lightweight self-review step to create solid flashcards without an expensive multi-agent cascade.
+AnkiGen is a Gradio-based web application that generates high-quality Anki flashcards using OpenAI's GPT models. It creates CSV and `.apkg` deck files with intelligent subject-specific card generation and quality review.
 
 ## Features
 
-- **Multi-Agent Card Generation**: Utilizes specialized agents for subject expertise, pedagogical guidance, and content structuring
-- **Quality Assurance System**: Multiple judge agents evaluate cards for accuracy, clarity, pedagogical value, and completeness
-- **Adaptive Enhancement**: Revision and enhancement agents improve cards based on judge feedback
 - Generate Anki cards for various subjects or from provided text/URLs
-- Generate a structured learning path for a complex topic
+- Create structured learning paths for complex topics
+- Export to CSV or `.apkg` format with default styling
 - Customizable number of topics and cards per topic
-- User-friendly interface powered by Gradio
-- Exports to CSV for manual import or `.apkg` format with default styling
-- Advanced OpenAI Agents SDK integration with structured outputs
+- Built-in quality review system
+- User-friendly Gradio interface
 
-## How It Works
-
-```mermaid
-graph TD
-    A[User Input] --> B[Generation Coordinator]
-    B --> C[Subject Expert Agent]
-    B --> D[Pedagogical Agent]
-    B --> E[Content Structuring Agent]
-    
-    C --> F[Generated Cards]
-    D --> F
-    E --> F
-    
-    F --> G[Judge Coordinator]
-    G --> H[Content Accuracy Judge]
-    G --> I[Pedagogical Judge]
-    G --> J[Clarity Judge]
-    G --> K[Technical Judge]
-    G --> L[Completeness Judge]
-    
-    H --> M{60% Consensus?}
-    I --> M
-    J --> M
-    K --> M
-    L --> M
-    
-    M -->|No| N[Revision Agent]
-    N --> O[Enhancement Agent]
-    O --> B
-    
-    M -->|Yes| P[Final High-Quality Cards]
-    P --> Q[Export to CSV/APKG]
-```
-
-## Installation for Local Use
+## Installation
 
 Preferred usage: [uv](https://github.com/astral-sh/uv)
 
-1.  Clone this repository:
+1. Clone this repository:
+   ```bash
+   git clone https://github.com/brickfrog/ankigen.git
+   cd ankigen
+   uv venv
+   source .venv/bin/activate
+   ```
 
-    ```bash
-    git clone https://github.com/brickfrog/ankigen.git
-    cd ankigen
-    uv venv
-    source .venv/bin/activate # Activate the virtual environment
-    ```
+2. Install dependencies:
+   ```bash
+   uv pip install -e .
+   ```
 
-2.  Install the required dependencies:
-
-    ```bash
-    uv pip install -e . # Install the package in editable mode
-    ```
-
-3.  Set up your OpenAI API key:
-    - Create a `.env` file in the project root (`ankigen/`).
-    - Add your key like this: `OPENAI_API_KEY="your_sk-xxxxxxxx_key_here"`
-    - The application will load this key automatically.
-    - **Note**: This application requires OpenAI API access and uses the `openai-agents` SDK for advanced multi-agent functionality.
+3. Set up your OpenAI API key:
+   - Create a `.env` file in the project root
+   - Add: `OPENAI_API_KEY="your_api_key_here"`
 
 ## Usage
 
-1.  Ensure your virtual environment is active (`source .venv/bin/activate`).
+1. Run the application:
+   ```bash
+   uv run python app.py
+   ```
 
-2.  Run the application:
+2. Open your browser to `http://127.0.0.1:7860`
 
-    ```bash
-    uv run python app.py
-    ```
-    *(Note: The `gradio app.py` command might also work but using `python app.py` within the `uv run` context is recommended.)*
+3. Select a generation mode:
+   - Single Subject: Generate cards for a specific topic
+   - Learning Path: Create a structured learning curriculum
+   - From Text: Generate cards from pasted text
+   - From Web: Generate cards from a URL
 
-3.  Open your web browser and navigate to the provided local URL (typically `http://127.0.0.1:7860`).
+4. Configure parameters and click "Generate Cards"
 
-4.  In the application interface:
-    - Your API key should be loaded automatically if using a `.env` file, otherwise enter it.
-    - Select the desired generation mode ("Single Subject", "Learning Path", "From Text", "From Web").
-    - Fill in the relevant inputs for the chosen mode.
-    - Adjust generation parameters (model, number of topics/cards, preferences).
-    - Click "Generate Cards" or "Analyze Learning Path".
-
-5.  Review the generated output.
-
-6.  For card generation, click "Export to CSV" or "Export to Anki Deck (.apkg)" to download the results.
+5. Export results as CSV or `.apkg` file
 
 ## Project Structure
 
-The codebase uses a sophisticated multi-agent architecture powered by the OpenAI Agents SDK:
-
--   `app.py`: Main Gradio application interface and event handling.
--   `ankigen_core/`: Directory containing the core logic modules:
-        -   `agents/`: **OpenAI Agents system implementation**:
-            -   `base.py`: Base agent wrapper and configuration classes
-            -   `generators.py`: SubjectExpertAgent for primary card creation
-            -   `integration.py`: AgentOrchestrator for orchestrating generation + self-review
-        -   `config.py`: Agent configuration management
-        -   `schemas.py`: Pydantic schemas for structured agent outputs
-        -   `templates/`: Jinja2 templates for agent prompts
-    -   `models.py`: Pydantic models for data structures.
-    -   `utils.py`: Logging, caching, web fetching utilities.
-    -   `llm_interface.py`: OpenAI API client management.
-    -   `card_generator.py`: Integration layer for agent-based card generation.
-    -   `learning_path.py`: Logic for the learning path analysis feature.
-    -   `exporters.py`: Functions for exporting data to CSV and `.apkg`.
-    -   `ui_logic.py`: Functions handling UI component updates and visibility.
--   `tests/`: Contains unit and integration tests.
-    -   `unit/`: Tests for individual modules in `ankigen_core`.
-    -   `integration/`: Tests for interactions between modules and the app.
--   `pyproject.toml`: Defines project metadata, dependencies, and build system configuration.
--   `README.md`: This file.
-
-## Agent System Architecture
-
-AnkiGen employs a sophisticated multi-agent system built on the OpenAI Agents SDK that ensures high-quality flashcard generation through specialized roles and quality control:
-
-### Generator Agent
-- **SubjectExpertAgent**: Provides domain-specific expertise for accurate content creation, followed by a single lightweight quality review that can revise or drop weak cards.
-
-### Orchestration
-- **AgentOrchestrator**: Main system controller that initializes the simplified agent pipeline and runs self-review before returning cards.
-
-This architecture ensures that every generated flashcard undergoes rigorous quality control and iterative improvement, resulting in superior learning materials.
+- `app.py`: Main Gradio application
+- `ankigen_core/`: Core logic modules
+  - `agents/`: Agent system implementation
+  - `card_generator.py`: Card generation orchestration
+  - `learning_path.py`: Learning path analysis
+  - `exporters.py`: CSV and `.apkg` export functionality
+  - `models.py`: Data structures
+- `tests/`: Unit and integration tests
 
 ## Development
 
-This project uses `uv` for environment and package management and `pytest` for testing.
+1. Install development dependencies:
+   ```bash
+   uv pip install -e ".[dev]"
+   ```
 
-1.  **Setup:** Follow the Installation steps above.
+2. Run tests:
+   ```bash
+   uv run pytest tests/
+   ```
 
-2.  **Install Development Dependencies:**
-    ```bash
-    uv pip install -e ".[dev]"
-    ```
-
-3.  **Running Tests:**
-    - To run all tests:
-      ```bash
-      uv run pytest tests/
-      ```
-    - To run with coverage:
-      ```bash
-      uv run pytest --cov=ankigen_core tests/
-      ```
-    *(Current test coverage target is >= 80%. As of the last run, coverage was ~89%.)*
-
-4.  **Code Style:** Please use `black` and `ruff` for formatting and linting (configured in `pyproject.toml` implicitly via dev dependencies, can be run manually).
-
-5.  **Making Changes:**
-    - Core logic changes should primarily be made within the `ankigen_core` modules.
-    - UI layout and event wiring are in `app.py`.
-    - Add or update tests in the `tests/` directory for any new or modified functionality.
-
-## TODO
-
-- [ ] Edit columns /fields
-- [ ] Improve crawler / RAG integration with agents
-- [ ] Add agent performance metrics and monitoring
-- [ ] Implement agent conversation history and context persistence
-- [ ] Add custom agent configuration UI
-- [ ] Expand subject-specific agent templates
+3. Run with coverage:
+   ```bash
+   uv run pytest --cov=ankigen_core tests/
+   ```
 
 ## License
 
@@ -189,6 +95,6 @@ BSD 2-Clause License
 
 ## Acknowledgments
 
-- This project uses the Gradio library (https://gradio.app/) for the web interface.
-- Card generation is powered by OpenAI's language models.
-- Card generation principles inspired by ["An Opinionated Guide to Using Anki Correctly"](https://www.lesswrong.com/posts/7Q7DPSk4iGFJd8DRk/an-opinionated-guide-to-using-anki-correctly) by Luise, which emphasizes atomic card design, standardized prompts, and effective spaced repetition practices.
+- Gradio library for the web interface
+- OpenAI for GPT models
+- Card design principles from ["An Opinionated Guide to Using Anki Correctly"](https://www.lesswrong.com/posts/7Q7DPSk4iGFJd8DRk/an-opinionated-guide-to-using-anki-correctly)
