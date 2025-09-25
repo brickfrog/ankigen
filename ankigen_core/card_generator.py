@@ -85,6 +85,8 @@ async def orchestrate_card_generation(  # MODIFIED: Added async
     preference_prompt: str,
     generate_cloze: bool,
     use_llm_judge: bool = False,
+    library_name: str = None,
+    library_topic: str = None,
 ):
     """Orchestrates the card generation process based on UI inputs."""
 
@@ -128,6 +130,8 @@ async def orchestrate_card_generation(  # MODIFIED: Added async
                 difficulty="intermediate",
                 enable_quality_pipeline=True,
                 context=context,
+                library_name=library_name,
+                library_topic=library_topic,
             )
 
             # Get token usage from session
@@ -149,16 +153,14 @@ async def orchestrate_card_generation(  # MODIFIED: Added async
             if agent_cards:
                 formatted_cards = format_cards_for_dataframe(
                     agent_cards,
-                    topic_name=f"Agent Generated - {subject}"
-                    if subject
-                    else "Agent Generated",
+                    topic_name=subject if subject else "General",
                     start_index=1,
                 )
 
                 output_df = pd.DataFrame(
                     formatted_cards, columns=get_dataframe_columns()
                 )
-                total_cards_message = f"<div><b>🤖 Agent Generated Cards:</b> <span id='total-cards-count'>{len(output_df)}</span></div>"
+                total_cards_message = f"<div><b>Cards Generated:</b> <span id='total-cards-count'>{len(output_df)}</span></div>"
 
                 logger.info(
                     f"Agent system generated {len(output_df)} cards successfully"

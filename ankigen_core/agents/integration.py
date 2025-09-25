@@ -1,12 +1,13 @@
 # Main integration module for AnkiGen agent system
 
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from datetime import datetime
 
 
 from ankigen_core.logging import logger
 from ankigen_core.models import Card
 from ankigen_core.llm_interface import OpenAIClientManager
+from ankigen_core.context7 import Context7Client
 
 from .generators import SubjectExpertAgent, QualityReviewAgent
 from ankigen_core.agents.config import get_config_manager
@@ -51,6 +52,8 @@ class AgentOrchestrator:
         difficulty: str = "intermediate",
         enable_quality_pipeline: bool = True,
         context: Dict[str, Any] = None,
+        library_name: Optional[str] = None,
+        library_topic: Optional[str] = None,
     ) -> Tuple[List[Card], Dict[str, Any]]:
         """Generate cards using the agent system"""
         start_time = datetime.now()
@@ -61,12 +64,37 @@ class AgentOrchestrator:
 
             logger.info(f"Starting agent-based card generation: {topic} ({subject})")
 
+            # Enhance context with library documentation if requested
+            enhanced_context = context or {}
+            library_docs = None
+
+            if library_name:
+                logger.info(f"Fetching library documentation for: {library_name}")
+                try:
+                    context7_client = Context7Client()
+                    library_docs = await context7_client.fetch_library_documentation(
+                        library_name, topic=library_topic, tokens=5000
+                    )
+
+                    if library_docs:
+                        enhanced_context["library_documentation"] = library_docs
+                        enhanced_context["library_name"] = library_name
+                        logger.info(
+                            f"Added {len(library_docs)} chars of {library_name} documentation to context"
+                        )
+                    else:
+                        logger.warning(
+                            f"Could not fetch documentation for library: {library_name}"
+                        )
+                except Exception as e:
+                    logger.error(f"Error fetching library documentation: {e}")
+
             cards = await self._generation_phase(
                 topic=topic,
                 subject=subject,
                 num_cards=num_cards,
                 difficulty=difficulty,
-                context=context,
+                context=enhanced_context,
             )
 
             review_results = {}
@@ -82,6 +110,8 @@ class AgentOrchestrator:
                 "topic": topic,
                 "subject": subject,
                 "difficulty": difficulty,
+                "library_name": library_name if library_name else None,
+                "library_docs_used": bool(library_docs),
             }
 
             logger.info(
@@ -106,8 +136,13 @@ class AgentOrchestrator:
         if not self.subject_expert or self.subject_expert.subject != subject:
             self.subject_expert = SubjectExpertAgent(self.openai_client, subject)
 
+        # Add difficulty to context if needed
+        if context is None:
+            context = {}
+        context["difficulty"] = difficulty
+
         cards = await self.subject_expert.generate_cards(
-            topic=topic, num_cards=num_cards, difficulty=difficulty, context=context
+            topic=topic, num_cards=num_cards, context=context
         )
 
         logger.info(f"Generation phase complete: {len(cards)} cards generated")

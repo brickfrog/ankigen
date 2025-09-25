@@ -256,6 +256,21 @@ def create_ankigen_interface():
                             info="Your key is used solely for processing your requests.",
                             elem_id="api-key-textbox",
                         )
+
+                        # Context7 Library Documentation
+                        with gr.Accordion(
+                            "Library Documentation (optional)", open=False
+                        ):
+                            library_name_input = gr.Textbox(
+                                label="Library Name",
+                                placeholder="e.g., 'react', 'tensorflow', 'pandas'",
+                                info="Fetch up-to-date documentation for this library",
+                            )
+                            library_topic_input = gr.Textbox(
+                                label="Documentation Focus (optional)",
+                                placeholder="e.g., 'hooks', 'data loading', 'transforms'",
+                                info="Specific topic within the library to focus on",
+                            )
                     with gr.Column(scale=1):
                         with gr.Accordion("Advanced Settings", open=False):
                             model_choices_ui = [
@@ -503,6 +518,8 @@ def create_ankigen_interface():
                 cards_per_topic_val,
                 preference_prompt_val,
                 generate_cloze_checkbox_val,
+                library_name_val,
+                library_topic_val,
                 progress=gr.Progress(track_tqdm=True),  # Added progress tracker
             ):
                 # Recreate the partial function call, but now it can be awaited
@@ -522,6 +539,8 @@ def create_ankigen_interface():
                     cards_per_topic_val,
                     preference_prompt_val,
                     generate_cloze_checkbox_val,
+                    library_name=library_name_val if library_name_val else None,
+                    library_topic=library_topic_val if library_topic_val else None,
                 )
                 # Expect 3-tuple return (dataframe, total_cards_html, token_usage_html)
 
@@ -538,6 +557,8 @@ def create_ankigen_interface():
                     cards_per_topic,
                     preference_prompt,
                     generate_cloze_checkbox,
+                    library_name_input,
+                    library_topic_input,
                 ],
                 outputs=[output, total_cards_html, token_usage_html],
                 show_progress="full",

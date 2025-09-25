@@ -62,6 +62,11 @@ class BaseAgentWrapper:
     async def initialize(self):
         """Initialize the OpenAI agent with structured output support"""
         try:
+            # Set the default OpenAI client for the agents SDK
+            from agents import set_default_openai_client
+
+            set_default_openai_client(self.openai_client, use_for_tracing=False)
+
             # Create model settings with temperature
             model_settings = ModelSettings(temperature=self.config.temperature)
 
