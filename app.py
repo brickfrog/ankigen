@@ -913,9 +913,20 @@ def create_ankigen_interface():
 
 # --- Main Execution --- (Runs if script is executed directly)
 if __name__ == "__main__":
+    import os
+
     try:
         ankigen_interface = create_ankigen_interface()
         logger.info("Launching AnkiGen Gradio interface...")
-        ankigen_interface.launch()
+
+        # Configure for HuggingFace Spaces vs local development
+        if os.environ.get("SPACE_ID"):  # On HuggingFace Spaces
+            # Let HuggingFace handle all the configuration
+            ankigen_interface.queue(default_concurrency_limit=2, max_size=10).launch()
+        else:  # Local development
+            # Use auto port finding for local dev
+            ankigen_interface.queue(default_concurrency_limit=2, max_size=10).launch(
+                server_name="127.0.0.1", share=False
+            )
     except Exception as e:
         logger.critical(f"Failed to launch Gradio interface: {e}", exc_info=True)
