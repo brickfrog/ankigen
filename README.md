@@ -3,7 +3,7 @@ title: AnkiGen
 emoji: 📚
 app_file: app.py
 requirements: requirements.txt
-python: 3.12
+python_version: 3.12
 sdk: gradio
 sdk_version: 5.38.1
 ---
