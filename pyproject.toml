@@ -35,6 +35,14 @@ dev = [
     "pre-commit>=4.3.0",
     "pytest-anyio>=0.0.0",
 ]
+cli = [
+    "click>=8.1.0",
+    "rich>=13.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+ankigen = "ankigen_core.cli:main"
 
 [tool.setuptools]
 py-modules = ["app"]

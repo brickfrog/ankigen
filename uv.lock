@@ -34,6 +34,11 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+cli = [
+    { name = "click" },
+    { name = "python-dotenv" },
+    { name = "rich" },
+]
 dev = [
     { name = "black" },
     { name = "pre-commit" },
@@ -48,6 +53,7 @@ dev = [
 requires-dist = [
     { name = "beautifulsoup4", specifier = "==4.13.5" },
     { name = "black", marker = "extra == 'dev'", specifier = ">=25.9.0" },
+    { name = "click", marker = "extra == 'cli'", specifier = ">=8.1.0" },
     { name = "fastmcp", specifier = ">=2.12.3" },
     { name = "genanki", specifier = ">=0.13.1" },
     { name = "gradio", specifier = ">=5.47.0" },
@@ -61,11 +67,13 @@ requires-dist = [
     { name = "pytest-anyio", marker = "extra == 'dev'", specifier = ">=0.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.15.1" },
+    { name = "python-dotenv", marker = "extra == 'cli'", specifier = ">=1.0.0" },
+    { name = "rich", marker = "extra == 'cli'", specifier = ">=13.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.13.1" },
     { name = "tenacity", specifier = ">=9.1.2" },
     { name = "tiktoken", specifier = ">=0.11.0" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["dev", "cli"]
 
 [[package]]
 name = "annotated-types"

@@ -10,16 +10,18 @@ sdk_version: 5.38.1
 
 # AnkiGen - Anki Card Generator
 
-AnkiGen is a Gradio-based web application that generates Anki flashcards using OpenAI's GPT models. It creates CSV and `.apkg` deck files with subject-specific card generation.
+AnkiGen generates Anki flashcards using OpenAI's GPT models. Available as both a web interface (Gradio) and command-line tool, it creates CSV and `.apkg` deck files with intelligent auto-configuration.
 
 ## Features
 
 - Generate Anki cards for various subjects or from provided text/URLs
+- AI-powered auto-configuration (intelligently determines topics, card counts, and models)
 - Create structured learning paths for complex topics
 - Export to CSV or `.apkg` format with default styling
 - Customizable number of topics and cards per topic
 - Built-in quality review system
-- User-friendly Gradio interface
+- **CLI for quick terminal-based generation**
+- **Web interface for interactive use**
 
 ## Installation
 
@@ -35,14 +37,53 @@ Preferred usage: [uv](https://github.com/astral-sh/uv)
 
 2. Install dependencies:
    ```bash
+   # Base installation (web interface)
    uv pip install -e .
+
+   # With CLI support
+   uv pip install -e ".[cli]"
    ```
 
 3. Set up your OpenAI API key:
-   - Create a `.env` file in the project root
-   - Add: `OPENAI_API_KEY="your_api_key_here"`
+   ```bash
+   export OPENAI_API_KEY="your_api_key_here"
+   ```
 
 ## Usage
+
+### CLI (Quick & Direct)
+
+Generate flashcards directly from your terminal with intelligent auto-configuration:
+
+```bash
+# Quick generation (auto-detects best settings)
+uv run python -m ankigen_core.cli -p "Basic SQL"
+
+# Custom settings
+uv run python -m ankigen_core.cli -p "React Hooks" \
+  --topics 5 \
+  --cards-per-topic 8 \
+  --output hooks.apkg
+
+# Export to CSV
+uv run python -m ankigen_core.cli -p "Docker basics" \
+  --format csv \
+  -o docker.csv
+
+# Skip confirmation prompt
+uv run python -m ankigen_core.cli -p "Python Lists" --no-confirm
+```
+
+**CLI Options:**
+- `-p, --prompt`: Subject/topic (required)
+- `--topics`: Number of topics (auto-detected if omitted)
+- `--cards-per-topic`: Cards per topic (auto-detected if omitted)
+- `--model`: Model choice (`gpt-4.1` or `gpt-4.1-nano`)
+- `-o, --output`: Output file path
+- `--format`: Export format (`apkg` or `csv`)
+- `--no-confirm`: Skip confirmation prompt
+
+### Web Interface (Interactive)
 
 1. Run the application:
    ```bash
@@ -63,10 +104,12 @@ Preferred usage: [uv](https://github.com/astral-sh/uv)
 
 ## Project Structure
 
-- `app.py`: Main Gradio application
+- `app.py`: Main Gradio web application
 - `ankigen_core/`: Core logic modules
+  - `cli.py`: Command-line interface
   - `agents/`: Agent system implementation
   - `card_generator.py`: Card generation orchestration
+  - `auto_config.py`: AI-powered auto-configuration
   - `learning_path.py`: Learning path analysis
   - `exporters.py`: CSV and `.apkg` export functionality
   - `models.py`: Data structures
