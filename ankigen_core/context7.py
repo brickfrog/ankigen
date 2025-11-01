@@ -3,15 +3,37 @@
 import asyncio
 import subprocess
 import json
+import re
 from typing import Optional, Dict, Any
 from ankigen_core.logging import logger
+
+# Security: Whitelist pattern for library names and topics
+# Allows: letters, numbers, hyphens, underscores, dots, forward slashes, @scopes
+SAFE_LIBRARY_PATTERN = re.compile(r"^[@a-zA-Z0-9._/-]+$")
+SAFE_TOPIC_PATTERN = re.compile(r"^[a-zA-Z0-9\s._-]+$")
+MAX_STRING_LENGTH = 200  # Prevent excessively long inputs
+SUBPROCESS_TIMEOUT = 60.0  # 60 second timeout for Context7 calls
 
 
 class Context7Client:
     """Context7 MCP client for fetching library documentation"""
 
     def __init__(self):
-        self.server_process = None
+        pass  # No state needed - each call creates fresh subprocess
+
+    @staticmethod
+    def _validate_library_name(library_name: str) -> bool:
+        """Validate library name to prevent injection attacks"""
+        if not library_name or len(library_name) > MAX_STRING_LENGTH:
+            return False
+        return SAFE_LIBRARY_PATTERN.match(library_name) is not None
+
+    @staticmethod
+    def _validate_topic(topic: str) -> bool:
+        """Validate topic string to prevent injection attacks"""
+        if not topic or len(topic) > MAX_STRING_LENGTH:
+            return False
+        return SAFE_TOPIC_PATTERN.match(topic) is not None
 
     async def call_context7_tool(
         self, tool_name: str, args: Dict[str, Any]
@@ -47,9 +69,20 @@ class Context7Client:
                 },
             }
 
-            # Send both requests
-            input_data = json.dumps(init_request) + "\n" + json.dumps(request) + "\n"
-            stdout, stderr = await process.communicate(input=input_data.encode())
+            # Send both requests with timeout protection
+            # Optimize: Use list join for string concatenation
+            input_data = "\n".join([json.dumps(init_request), json.dumps(request), ""])
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(input=input_data.encode()),
+                    timeout=SUBPROCESS_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.wait()
+                raise TimeoutError(
+                    f"Context7 subprocess timed out after {SUBPROCESS_TIMEOUT}s"
+                )
 
             # Parse responses
             responses = stdout.decode().strip().split("\n")
@@ -81,6 +114,13 @@ class Context7Client:
 
     async def resolve_library_id(self, library_name: str) -> Optional[str]:
         """Resolve a library name to a Context7-compatible ID"""
+        # Security: Validate library name to prevent injection
+        if not self._validate_library_name(library_name):
+            logger.error(f"Invalid library name (security): '{library_name}'")
+            raise ValueError(
+                f"Invalid library name: must match pattern {SAFE_LIBRARY_PATTERN.pattern}"
+            )
+
         logger.info(f"Resolving library ID for: {library_name}")
 
         result = await self.call_context7_tool(
@@ -204,6 +244,22 @@ class Context7Client:
         self, library_id: str, topic: Optional[str] = None, tokens: int = 5000
     ) -> Optional[str]:
         """Get documentation for a library"""
+        # Security: Validate library_id (should start with /)
+        if (
+            not library_id
+            or not library_id.startswith("/")
+            or len(library_id) > MAX_STRING_LENGTH
+        ):
+            logger.error(f"Invalid library ID format (security): '{library_id}'")
+            raise ValueError("Invalid library ID format")
+
+        # Security: Validate topic if provided
+        if topic and not self._validate_topic(topic):
+            logger.error(f"Invalid topic (security): '{topic}'")
+            raise ValueError(
+                f"Invalid topic: must match pattern {SAFE_TOPIC_PATTERN.pattern}"
+            )
+
         logger.info(
             f"Fetching docs for: {library_id}" + (f" (topic: {topic})" if topic else "")
         )

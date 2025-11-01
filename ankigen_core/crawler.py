@@ -2,12 +2,17 @@ import requests
 from bs4 import BeautifulSoup, Tag
 from urllib.parse import urljoin, urlparse
 import re
+import ipaddress
+import socket
 from typing import List, Set, Optional, Callable, Tuple
 import xml.etree.ElementTree as ET  # Added for Sitemap parsing
 
 from ankigen_core.models import CrawledPage
 from ankigen_core.utils import RateLimiter, get_logger
 from ankigen_core.logging import logger  # Added
+
+# Security: Maximum URL length to prevent abuse
+MAX_URL_LENGTH = 2048
 
 
 class WebCrawler:
@@ -45,16 +50,57 @@ class WebCrawler:
 
     def _is_valid_url(self, url: str) -> bool:
         """
-        Checks if the URL is valid for crawling (same domain, scheme, matches patterns).
+        Checks if the URL is valid for crawling with SSRF protection.
+        Validates scheme, domain, patterns, and blocks private IP ranges.
         """
         try:
+            # Security: URL length check
+            if len(url) > MAX_URL_LENGTH:
+                logger.warning(
+                    f"URL exceeds maximum length ({MAX_URL_LENGTH}): {url[:100]}..."
+                )
+                return False
+
             parsed_url = urlparse(url)
+
+            # Security: Protocol whitelist (http/https only)
             if not parsed_url.scheme or parsed_url.scheme.lower() not in [
                 "http",
                 "https",
             ]:
                 logger.debug(f"Invalid scheme for URL: {url}")
                 return False
+
+            # Security: SSRF protection - block private IP ranges
+            hostname = parsed_url.hostname
+            if not hostname:
+                logger.warning(f"URL missing hostname: {url}")
+                return False
+
+            # Resolve hostname to IP and check if it's private
+            try:
+                # Get IP address for hostname
+                ip_str = socket.gethostbyname(hostname)
+                ip = ipaddress.ip_address(ip_str)
+
+                # Block private, loopback, link-local, and reserved addresses
+                if (
+                    ip.is_private
+                    or ip.is_loopback
+                    or ip.is_link_local
+                    or ip.is_reserved
+                ):
+                    logger.error(
+                        f"SSRF protection: Blocked private/internal IP {ip_str} for hostname {hostname}"
+                    )
+                    return False
+
+            except (socket.gaierror, ValueError, OSError) as e:
+                # DNS resolution failed or invalid IP
+                logger.warning(f"Could not resolve hostname {hostname}: {e}")
+                return False
+
+            # Domain check
             if parsed_url.netloc != self.base_domain:
                 logger.debug(f"URL {url} not in base domain {self.base_domain}")
                 return False
@@ -76,6 +122,10 @@ class WebCrawler:
         except ValueError:  # Handle potential errors from urlparse on malformed URLs
             logger.warning(f"ValueError when parsing URL: {url}", exc_info=True)
             return False
+        except Exception as e:
+            logger.error(f"Unexpected error validating URL {url}: {e}", exc_info=True)
+            return False
+
         return True
 
     def _extract_links(self, soup: BeautifulSoup, base_url: str) -> List[str]:

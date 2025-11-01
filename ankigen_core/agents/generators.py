@@ -108,9 +108,10 @@ class SubjectExpertAgent(BaseAgentWrapper):
                     f"Generating batch {batch_num}: {cards_in_this_batch} cards"
                 )
 
-                # Reset agent for each batch to avoid conversation history accumulation
-                self.agent = None
-                await self.initialize()
+                # Initialize agent only once - Runner.run() creates fresh context each time
+                # No conversation history accumulation across batches (significant performance gain)
+                if not self.agent:
+                    await self.initialize()
 
                 user_input = (
                     f"Generate {cards_in_this_batch} flashcards for the topic: {topic}"
@@ -158,13 +159,13 @@ class SubjectExpertAgent(BaseAgentWrapper):
                 batch_num += 1
 
                 logger.info(
-                    f"Batch {batch_num-1} generated {len(batch_cards)} cards. {cards_remaining} cards remaining."
+                    f"Batch {batch_num - 1} generated {len(batch_cards)} cards. {cards_remaining} cards remaining."
                 )
 
                 # Safety check to prevent infinite loops
                 if len(batch_cards) == 0:
                     logger.warning(
-                        f"No cards generated in batch {batch_num-1}, stopping generation"
+                        f"No cards generated in batch {batch_num - 1}, stopping generation"
                     )
                     break
 
@@ -175,7 +176,7 @@ class SubjectExpertAgent(BaseAgentWrapper):
                 )
 
             logger.info(
-                f"✅ Generated {len(all_cards)} cards total across {batch_num-1} batches for topic '{topic}'"
+                f"✅ Generated {len(all_cards)} cards total across {batch_num - 1} batches for topic '{topic}'"
             )
             return all_cards
 

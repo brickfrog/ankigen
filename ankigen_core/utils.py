@@ -6,7 +6,6 @@ import sys
 import hashlib
 import requests
 from bs4 import BeautifulSoup
-from functools import lru_cache
 from typing import Any, Optional
 import time
 
@@ -62,39 +61,65 @@ logger = get_logger()
 
 # --- Caching ---
 class ResponseCache:
-    """A simple cache for API responses using LRU for get operations."""
+    """Simple and efficient LRU cache for API responses with proper eviction."""
 
-    def __init__(self, maxsize=128):
-        # This internal method will be decorated by lru_cache
-        self._internal_get_from_dict = self._get_from_dict_actual
-        self._lru_cached_get = lru_cache(maxsize=maxsize)(self._internal_get_from_dict)
-        self._dict_cache = {}  # Main store for set operations
-
-    def _get_from_dict_actual(self, cache_key: str):
-        """Actual dictionary lookup, intended to be wrapped by lru_cache."""
-        logger.debug(f"Cache DICT GET: key={cache_key}")
-        return self._dict_cache.get(cache_key)
+    def __init__(self, maxsize: int = 128):
+        self.maxsize = maxsize
+        self._cache = {}  # {key: response}
+        self._access_order = []  # Track access order for LRU eviction
+        self.hits = 0
+        self.misses = 0
 
     def get(self, prompt: str, model: str) -> Optional[Any]:
-        """Retrieves an item from the cache. Uses LRU for this get path."""
+        """Retrieve item from cache, updating LRU order."""
         cache_key = self._create_key(prompt, model)
-        # Use the LRU cached getter which looks up in _dict_cache
-        return self._lru_cached_get(cache_key)
+
+        if cache_key in self._cache:
+            # Move to end (most recently used)
+            self._access_order.remove(cache_key)
+            self._access_order.append(cache_key)
+            self.hits += 1
+            logger.debug(
+                f"Cache HIT: {cache_key[:16]}... (hits={self.hits}, misses={self.misses})"
+            )
+            return self._cache[cache_key]
+
+        self.misses += 1
+        logger.debug(
+            f"Cache MISS: {cache_key[:16]}... (hits={self.hits}, misses={self.misses})"
+        )
+        return None
 
     def set(self, prompt: str, model: str, response: Any):
-        """Sets an item in the cache."""
+        """Store item in cache with LRU eviction when full."""
         cache_key = self._create_key(prompt, model)
-        logger.debug(f"Cache SET: key={cache_key}, type={type(response)}")
-        self._dict_cache[cache_key] = response
-        # To make the LRU cache aware of this new item for subsequent gets:
-        # We can call the LRU getter so it caches it, or clear specific lru entry if updating.
-        # For simplicity, if a new item is set, a subsequent get will fetch and cache it via LRU.
-        # Or, we can "prime" the lru_cache, but that's more complex.
-        # Current approach: set updates _dict_cache. Next get for this key will use _lru_cached_get,
-        # which will fetch from _dict_cache and then be LRU-managed.
+
+        # If key exists, update and move to end
+        if cache_key in self._cache:
+            self._access_order.remove(cache_key)
+        # If cache is full, evict least recently used
+        elif len(self._cache) >= self.maxsize:
+            evicted_key = self._access_order.pop(0)
+            del self._cache[evicted_key]
+            logger.debug(
+                f"Cache EVICT: {evicted_key[:16]}... (size={len(self._cache)})"
+            )
+
+        self._cache[cache_key] = response
+        self._access_order.append(cache_key)
+        logger.debug(f"Cache SET: {cache_key[:16]}... (size={len(self._cache)})")
+
+    def clear(self):
+        """Clear all cache entries and statistics."""
+        self._cache.clear()
+        self._access_order.clear()
+        self.hits = 0
+        self.misses = 0
+        logger.debug("Cache CLEARED")
 
     def _create_key(self, prompt: str, model: str) -> str:
-        """Creates a unique MD5 hash key for caching."""
+        """Create cache key from prompt and model (MD5 hash for size efficiency)."""
+        # Hash to keep keys manageable size while maintaining uniqueness
         return hashlib.md5(f"{model}:{prompt}".encode("utf-8")).hexdigest()
 
 
