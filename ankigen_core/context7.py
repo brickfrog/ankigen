@@ -5,6 +5,12 @@ import subprocess
 import json
 import re
 from typing import Optional, Dict, Any
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
 from ankigen_core.logging import logger
 
 # Security: Whitelist pattern for library names and topics
@@ -35,10 +41,16 @@ class Context7Client:
             return False
         return SAFE_TOPIC_PATTERN.match(topic) is not None
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((TimeoutError, ConnectionError)),
+        reraise=True,
+    )
     async def call_context7_tool(
         self, tool_name: str, args: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
-        """Call a Context7 tool via direct JSONRPC"""
+        """Call a Context7 tool via direct JSONRPC with retry logic"""
         try:
             # Build the JSONRPC request
             request = {
@@ -304,7 +316,7 @@ class Context7Client:
         return await self.get_library_docs(library_id, topic, tokens)
 
 
-async def test_context7():
+async def test_context7() -> None:
     """Test the Context7 integration"""
     client = Context7Client()
 

@@ -4,6 +4,7 @@ import gradio as gr
 import pandas as pd
 import genanki
 import random
+import html
 from typing import List, Dict, Any, Optional
 import csv
 from datetime import datetime
@@ -21,6 +22,57 @@ def _format_field_as_string(value: Any) -> str:
     if pd.isna(value) or value is None:
         return ""
     return str(value).strip()
+
+
+def _generate_timestamped_filename(
+    base_name: str, extension: str, include_timestamp: bool = True
+) -> str:
+    """Generate a filename with optional timestamp.
+
+    Args:
+        base_name: The base name for the file (without extension)
+        extension: File extension (e.g., 'csv', 'apkg')
+        include_timestamp: Whether to include timestamp in filename
+
+    Returns:
+        Generated filename with extension
+    """
+    if include_timestamp:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return f"{base_name}_{timestamp}.{extension}"
+    return f"{base_name}.{extension}"
+
+
+def _ensure_output_directory(filepath: str) -> None:
+    """Ensure the output directory exists for the given filepath.
+
+    Args:
+        filepath: Full path to the file
+
+    Creates the directory if it doesn't exist.
+    """
+    output_dir = os.path.dirname(filepath)
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+        logger.info(f"Created output directory: {output_dir}")
+
+
+def _validate_non_empty_data(data: Any, data_type: str) -> None:
+    """Validate that data is not empty.
+
+    Args:
+        data: The data to validate (list, DataFrame, etc.)
+        data_type: Description of data type for error messages
+
+    Raises:
+        ValueError: If data is empty or None
+    """
+    if data is None:
+        raise ValueError(f"No {data_type} provided to export.")
+    if isinstance(data, list) and not data:
+        raise ValueError(f"No {data_type} provided to export.")
+    if isinstance(data, pd.DataFrame) and data.empty:
+        raise ValueError(f"No {data_type} available to export.")
 
 
 # --- Constants for APKG Generation (Subtask 10) ---
@@ -587,19 +639,18 @@ def export_cards_to_csv(
         KeyError: If a card dictionary is missing essential keys like 'front' or 'back'.
         ValueError: If the cards list is empty or not provided.
     """
-    if not cards:
-        logger.warning("export_cards_to_csv called with an empty list of cards.")
-        raise ValueError("No cards provided to export.")
+    # Validation using helper
+    _validate_non_empty_data(cards, "cards")
 
+    # Filename generation using helper
     if not filename:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        # Ensure filename is just the name, not a path if not intended
-        # For simplicity, this example saves in the current working directory if no path is specified.
-        filename = f"ankigen_cards_{timestamp}.csv"
+        filename = _generate_timestamped_filename("ankigen_cards", "csv")
         logger.info(f"No filename provided, generated: {filename}")
 
+    # Ensure output directory exists using helper
+    _ensure_output_directory(filename)
+
     # Define the fieldnames expected in the CSV.
-    # 'front' and 'back' are mandatory.
     fieldnames = ["front", "back", "tags", "note_type"]
 
     try:
@@ -611,7 +662,7 @@ def export_cards_to_csv(
             writer.writeheader()
             for i, card in enumerate(cards):
                 try:
-                    # Ensure mandatory fields exist, others are optional via card.get in row_to_write
+                    # Ensure mandatory fields exist
                     if "front" not in card or "back" not in card:
                         raise KeyError(
                             f"Card at index {i} is missing 'front' or 'back' key."
@@ -628,16 +679,13 @@ def export_cards_to_csv(
                     logger.error(
                         f"Skipping card due to KeyError: {e_inner}. Card data: {card}"
                     )
-                    # Optionally re-raise if one bad card should stop the whole export,
-                    # or continue to export valid cards.
-                    # For this implementation, we log and continue.
                     continue
         logger.info(f"Successfully exported cards to {filename}")
         return filename
     except IOError as e_io:
         logger.error(f"IOError during CSV export to {filename}: {e_io}", exc_info=True)
-        raise  # Re-raise the IOError
-    except Exception as e_general:  # Catch any other unexpected errors
+        raise
+    except Exception as e_general:
         logger.error(
             f"Unexpected error during CSV export to {filename}: {e_general}",
             exc_info=True,
@@ -664,16 +712,18 @@ def export_cards_to_apkg(
         The path to the exported file.
     """
     logger.info(f"Starting APKG export for {len(cards)} cards to deck '{deck_name}'.")
+
+    # Validation using helper - note this now raises ValueError instead of gr.Error
+    _validate_non_empty_data(cards, "cards")
+
+    # Filename generation using helper
     if not filename:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"ankigen_deck_{timestamp}.apkg"
+        filename = _generate_timestamped_filename("ankigen_deck", "apkg")
     elif not filename.lower().endswith(".apkg"):
         filename += ".apkg"
 
-    output_dir = os.path.dirname(filename)
-    if output_dir and not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-        logger.info(f"Created output directory for APKG: {output_dir}")
+    # Ensure output directory exists using helper
+    _ensure_output_directory(filename)
 
     anki_basic_model = BASIC_MODEL
     anki_cloze_model = CLOZE_MODEL
@@ -687,20 +737,17 @@ def export_cards_to_apkg(
         tags_for_note_object = card_dict.get("tags_for_note_object", [])
 
         # Extract all potential fields, defaulting to empty strings
-        question = card_dict.get("Question", "")
-        answer = card_dict.get("Answer", "")
-        explanation = card_dict.get("Explanation", "")
-        example = card_dict.get("Example", "")
-        prerequisites = card_dict.get("Prerequisites", "")
-        learning_outcomes = card_dict.get("Learning_Outcomes", "")
-        difficulty = card_dict.get("Difficulty", "")
-        source_url = card_dict.get("SourceURL", "")
-        tags_str_field = card_dict.get(
-            "TagsStr", ""
-        )  # This is the string for the model's TagsStr field
+        # Security: Sanitize HTML to prevent XSS when viewing cards in Anki
+        question = html.escape(card_dict.get("Question", ""))
+        answer = html.escape(card_dict.get("Answer", ""))
+        explanation = html.escape(card_dict.get("Explanation", ""))
+        example = html.escape(card_dict.get("Example", ""))
+        prerequisites = html.escape(card_dict.get("Prerequisites", ""))
+        learning_outcomes = html.escape(card_dict.get("Learning_Outcomes", ""))
+        difficulty = html.escape(card_dict.get("Difficulty", ""))
+        source_url = html.escape(card_dict.get("SourceURL", ""))
+        tags_str_field = html.escape(card_dict.get("TagsStr", ""))
 
-        # The 'Question' field from card_dict is used as the main text for both basic and cloze.
-        # For cloze, this 'Question' field should contain the cloze-formatted text (e.g., "The capital of {{c1::France}} is Paris.")
         if not question:
             logger.error(
                 f"SKIPPING CARD DUE TO EMPTY 'Question' (front/text) field. Card data: {card_dict}"
@@ -709,11 +756,10 @@ def export_cards_to_apkg(
 
         try:
             if note_type.lower() == "cloze":
-                # CLOZE_MODEL fields: Text, Back Extra, Explanation, Example, Prerequisites,
-                # Learning_Outcomes, Difficulty, SourceURL, TagsStr
+                # CLOZE_MODEL fields
                 note_fields = [
-                    question,  # Text (this is the card_dict['Question'] which should be cloze-formatted)
-                    answer,  # Back Extra (this is card_dict['Answer'])
+                    question,  # Text
+                    answer,  # Back Extra
                     explanation,
                     example,
                     prerequisites,
@@ -728,8 +774,7 @@ def export_cards_to_apkg(
                     tags=tags_for_note_object,
                 )
             else:  # Basic
-                # BASIC_MODEL fields: Question, Answer, Explanation, Example, Prerequisites,
-                # Learning_Outcomes, Difficulty, SourceURL, TagsStr
+                # BASIC_MODEL fields
                 note_fields = [
                     question,
                     answer,
@@ -755,24 +800,17 @@ def export_cards_to_apkg(
             )
             logger.warning(f"Skipping card due to error: Question='{question[:50]}...'")
 
-    if notes_added_count == 0 and cards:  # Some cards were provided but none were added
-        logger.error(  # Changed to error for more visibility
+    if notes_added_count == 0:
+        logger.error(
             "No valid notes could be created from the provided cards. APKG generation aborted."
         )
-        # This error should be caught by the calling function in app.py to inform the user
         raise gr.Error("Failed to create any valid Anki notes from the input.")
-    elif not cards:  # No cards provided initially
-        logger.info("No cards provided to export to APKG. APKG generation skipped.")
-        # Depending on desired behavior, could raise or return a specific status/filename
-        # For now, let's assume an empty/default filename or None indicates no action if no cards
-        # However, the function is typed to return str, so raising is more consistent if no file is made.
-        raise gr.Error("No cards were provided to generate an APKG file.")
-    else:  # notes_added_count > 0
-        logger.info(
-            f"Added {notes_added_count} notes to deck '{deck_name}'. Proceeding to package."
-        )
 
-    # Only proceed to package and write if notes were successfully added
+    logger.info(
+        f"Added {notes_added_count} notes to deck '{deck_name}'. Proceeding to package."
+    )
+
+    # Package and write
     package = genanki.Package(anki_deck)
     try:
         package.write_to_file(filename)
@@ -846,18 +884,18 @@ def export_dataframe_to_csv(
     logger.info(
         f"Attempting to export DataFrame to CSV. Suggested filename: {filename_suggestion}"
     )
-    if data is None or data.empty:
+
+    # Validation using helper
+    try:
+        _validate_non_empty_data(data, "card data")
+    except ValueError:
         logger.warning(
             "No data provided to export_dataframe_to_csv. Skipping CSV export."
         )
-        raise gr.Error(
-            "No card data available"
-        )  # Notify user via Gradio with Error instead of Info
-        # return None # This line is now unreachable due to the raise
+        raise gr.Error("No card data available")
 
     try:
-        # Create a specific filename using both suggestion and timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Generate filename from suggestion
         base_name_from_suggestion = "ankigen_cards"  # Default base part
 
         # Sanitize and use the suggestion (e.g., subject name) if provided
@@ -867,28 +905,23 @@ def export_dataframe_to_csv(
             safe_suggestion = (
                 processed_suggestion.replace(" ", "_")
                 .replace("/", "-")
-                .replace("\\\\", "-")
+                .replace("\\", "-")
             )
-            if (
-                safe_suggestion
-            ):  # If suggestion wasn't just '.csv' or empty after processing
+            if safe_suggestion:
                 base_name_from_suggestion = f"ankigen_{safe_suggestion[:50]}"
-            # If suggestion was empty or only '.csv', default base_name_from_suggestion remains 'ankigen_cards'
 
-        final_filename = f"{base_name_from_suggestion}_{timestamp}.csv"
+        # Generate timestamped filename using helper
+        final_filename = _generate_timestamped_filename(
+            base_name_from_suggestion, "csv"
+        )
 
-        # Ensure output directory exists if filename contains path
-        output_dir = os.path.dirname(final_filename)
-        if output_dir and not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-            logger.info(f"Created output directory for CSV: {output_dir}")
+        # Ensure output directory exists using helper
+        _ensure_output_directory(final_filename)
 
-        data.to_csv(final_filename, index=False)  # MODIFIED: Write to final_filename
+        data.to_csv(final_filename, index=False)
         logger.info(f"Successfully exported DataFrame to CSV: {final_filename}")
-        gr.Info(
-            f"CSV ready for download: {os.path.basename(final_filename)}"
-        )  # User-friendly message
-        return final_filename  # MODIFIED: Return final_filename
+        gr.Info(f"CSV ready for download: {os.path.basename(final_filename)}")
+        return final_filename
     except Exception as e:
         logger.error(f"Error exporting DataFrame to CSV: {e}", exc_info=True)
         gr.Error(f"Error exporting DataFrame to CSV: {e}")
@@ -902,9 +935,8 @@ def export_dataframe_to_apkg(
     deck_name: str,
 ) -> str:
     """Exports a DataFrame of cards to an Anki .apkg file."""
-    if df.empty:
-        logger.warning("export_dataframe_to_apkg called with an empty DataFrame.")
-        raise ValueError("No cards in DataFrame to export.")
+    # Validation using helper
+    _validate_non_empty_data(df, "cards in DataFrame")
 
     logger.info(
         f"Starting APKG export for DataFrame with {len(df)} rows to deck '{deck_name}'. Output: {output_path}"
@@ -918,25 +950,17 @@ def export_dataframe_to_apkg(
             )
             topic = _format_field_as_string(row.get("Topic", ""))
             difficulty_raw = _format_field_as_string(row.get("Difficulty", ""))
-            difficulty_plain_for_tag = strip_html_tags(
-                difficulty_raw
-            )  # Strip HTML for the tag
+            difficulty_plain_for_tag = strip_html_tags(difficulty_raw)
 
-            tags_list_for_note_obj = []  # For genanki.Note(tags=...)
+            tags_list_for_note_obj = []
             if topic:
                 tags_list_for_note_obj.append(topic.replace(" ", "_").replace(",", "_"))
-            if difficulty_plain_for_tag:  # Use the plain text version for the tag
-                # Further sanitize for Anki tags: replace spaces with underscores, remove other invalid chars if any.
-                # Anki tags also often don't like colons or other special chars except underscore/hyphen.
-                # For now, just replacing space, as that's the error seen.
+            if difficulty_plain_for_tag:
                 safe_difficulty_tag = difficulty_plain_for_tag.replace(" ", "_")
                 tags_list_for_note_obj.append(safe_difficulty_tag)
 
-            tags_str_for_field = " ".join(
-                tags_list_for_note_obj
-            )  # For the 'TagsStr' model field
+            tags_str_for_field = " ".join(tags_list_for_note_obj)
 
-            # Prepare a dictionary that contains all possible fields our models might need.
             card_data_for_note = {
                 "note_type": note_type_val,
                 "tags_for_note_object": tags_list_for_note_obj,
@@ -949,7 +973,7 @@ def export_dataframe_to_apkg(
                 "Learning_Outcomes": _format_field_as_string(
                     row.get("Learning_Outcomes", "")
                 ),
-                "Difficulty": difficulty_raw,  # Keep the original HTML for the 'Difficulty' field itself
+                "Difficulty": difficulty_raw,
                 "SourceURL": _format_field_as_string(row.get("Source_URL", "")),
             }
             cards_for_apkg.append(card_data_for_note)

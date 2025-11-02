@@ -22,7 +22,7 @@ class SSRFProtectionAdapter(HTTPAdapter):
     IP addresses at connection time (prevents DNS rebinding attacks).
     """
 
-    def send(self, request, **kwargs):
+    def send(self, request, **kwargs) -> requests.Response:
         """Override send to validate IP before making request."""
         # Parse the URL to get hostname
         parsed = urlparse(request.url)
@@ -92,7 +92,8 @@ class WebCrawler:
         self.session.headers.update({"User-Agent": self.user_agent})
 
         # Security: Add SSRF protection adapter to prevent DNS rebinding attacks
-        ssrf_adapter = SSRFProtectionAdapter()
+        # Performance: Configure connection pooling (10 connections per host, 20 total)
+        ssrf_adapter = SSRFProtectionAdapter(pool_connections=10, pool_maxsize=20)
         self.session.mount("http://", ssrf_adapter)
         self.session.mount("https://", ssrf_adapter)
 

@@ -13,7 +13,7 @@ import time
 _logger_instance = None
 
 
-def setup_logging():
+def setup_logging() -> logging.Logger:
     """Configure logging to both file and console"""
     global _logger_instance
     if _logger_instance:
@@ -48,7 +48,7 @@ def setup_logging():
     return logger
 
 
-def get_logger():
+def get_logger() -> logging.Logger:
     """Returns the initialized logger instance."""
     if _logger_instance is None:
         return setup_logging()
@@ -109,7 +109,7 @@ class ResponseCache:
         self._access_order.append(cache_key)
         logger.debug(f"Cache SET: {cache_key[:16]}... (size={len(self._cache)})")
 
-    def clear(self):
+    def clear(self) -> None:
         """Clear all cache entries and statistics."""
         self._cache.clear()
         self._access_order.clear()
@@ -203,7 +203,7 @@ class RateLimiter:
         self.last_request_timestamp: float = 0.0
         # Use a lock if this were to be used by multiple threads, but for now assuming single thread access per instance
 
-    def wait(self):
+    def wait(self) -> None:
         """Blocks until it's safe to make the next request."""
         current_time = time.monotonic()  # Use monotonic clock for intervals
         time_since_last_request = current_time - self.last_request_timestamp
