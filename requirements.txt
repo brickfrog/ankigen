@@ -2,6 +2,8 @@
 #    uv pip compile pyproject.toml -o requirements.txt
 aiofiles==24.1.0
     # via gradio
+annotated-doc==0.0.3
+    # via fastapi
 annotated-types==0.7.0
     # via pydantic
 anyio==4.9.0
@@ -19,12 +21,18 @@ attrs==25.3.0
     #   referencing
 authlib==1.6.5
     # via fastmcp
+beartype==0.22.5
+    # via
+    #   py-key-value-aio
+    #   py-key-value-shared
 beautifulsoup4==4.13.5
     # via ankigen (pyproject.toml)
 brotli==1.1.0
     # via gradio
 cached-property==2.0.1
     # via genanki
+cachetools==6.2.1
+    # via py-key-value-aio
 certifi==2025.6.15
     # via
     #   httpcore
@@ -43,9 +51,14 @@ click==8.2.1
 colorama==0.4.6
     # via griffe
 cryptography==46.0.1
-    # via authlib
+    # via
+    #   authlib
+    #   pyjwt
+    #   secretstorage
 cyclopts==3.24.0
     # via fastmcp
+diskcache==5.6.3
+    # via py-key-value-aio
 distro==1.9.0
     # via openai
 dnspython==2.8.0
@@ -58,9 +71,9 @@ email-validator==2.3.0
     # via pydantic
 exceptiongroup==1.3.0
     # via fastmcp
-fastapi==0.115.13
+fastapi==0.120.4
     # via gradio
-fastmcp==2.12.3
+fastmcp==2.13.0
     # via ankigen (pyproject.toml)
 ffmpy==0.6.0
     # via gradio
@@ -74,9 +87,9 @@ fsspec==2025.5.1
     #   huggingface-hub
 genanki==0.13.1
     # via ankigen (pyproject.toml)
-gradio==5.47.0
+gradio==5.49.1
     # via ankigen (pyproject.toml)
-gradio-client==1.13.2
+gradio-client==1.13.3
     # via gradio
 griffe==1.7.3
     # via openai-agents
@@ -112,6 +125,16 @@ idna==3.10
     #   requests
 isodate==0.7.2
     # via openapi-core
+jaraco-classes==3.4.0
+    # via keyring
+jaraco-context==6.0.1
+    # via keyring
+jaraco-functools==4.3.0
+    # via keyring
+jeepney==0.9.0
+    # via
+    #   keyring
+    #   secretstorage
 jinja2==3.1.6
     # via gradio
 jiter==0.10.0
@@ -130,6 +153,8 @@ jsonschema-specifications==2025.4.1
     # via
     #   jsonschema
     #   openapi-schema-validator
+keyring==25.6.0
+    # via py-key-value-aio
 lazy-object-proxy==1.12.0
     # via openapi-spec-validator
 lxml==6.0.2
@@ -141,14 +166,17 @@ markupsafe==3.0.2
     #   gradio
     #   jinja2
     #   werkzeug
-mcp==1.14.1
+mcp==1.20.0
     # via
     #   fastmcp
     #   openai-agents
 mdurl==0.1.2
     # via markdown-it-py
 more-itertools==10.8.0
-    # via openapi-core
+    # via
+    #   jaraco-classes
+    #   jaraco-functools
+    #   openapi-core
 numpy==2.3.1
     # via
     #   gradio
@@ -184,8 +212,16 @@ parse==1.20.2
     # via openapi-core
 pathable==0.4.4
     # via jsonschema-path
+pathvalidate==3.3.1
+    # via py-key-value-aio
 pillow==11.3.0
     # via gradio
+platformdirs==4.5.0
+    # via fastmcp
+py-key-value-aio==0.2.8
+    # via fastmcp
+py-key-value-shared==0.2.8
+    # via py-key-value-aio
 pycparser==2.23
     # via cffi
 pydantic==2.11.9
@@ -207,6 +243,8 @@ pydub==0.25.1
     # via gradio
 pygments==2.19.2
     # via rich
+pyjwt==2.10.1
+    # via mcp
 pyperclip==1.10.0
     # via fastmcp
 python-dateutil==2.9.0.post0
@@ -258,6 +296,8 @@ ruff==0.13.1
     # via gradio
 safehttpx==0.1.6
     # via gradio
+secretstorage==3.4.0
+    # via keyring
 semantic-version==2.10.0
     # via gradio
 shellingham==1.5.4
@@ -274,8 +314,9 @@ soupsieve==2.7
     # via beautifulsoup4
 sse-starlette==2.3.6
     # via mcp
-starlette==0.46.2
+starlette==0.49.3
     # via
+    #   ankigen (pyproject.toml)
     #   fastapi
     #   gradio
     #   mcp
@@ -293,7 +334,7 @@ typer==0.16.0
     # via gradio
 types-requests==2.32.4.20250611
     # via openai-agents
-typing-extensions==4.14.0
+typing-extensions==4.15.0
     # via
     #   anyio
     #   beautifulsoup4
@@ -305,9 +346,11 @@ typing-extensions==4.14.0
     #   openai
     #   openai-agents
     #   openapi-core
+    #   py-key-value-shared
     #   pydantic
     #   pydantic-core
     #   referencing
+    #   starlette
     #   typer
     #   typing-inspection
 typing-inspection==0.4.1
@@ -325,6 +368,8 @@ uvicorn==0.34.3
     #   gradio
     #   mcp
 websockets==15.0.1
-    # via gradio-client
+    # via
+    #   fastmcp
+    #   gradio-client
 werkzeug==3.1.1
     # via openapi-core
