@@ -11,6 +11,9 @@ import xml.etree.ElementTree as ET  # Added for Sitemap parsing
 from ankigen_core.models import CrawledPage
 from ankigen_core.utils import RateLimiter, get_logger
 from ankigen_core.logging import logger  # Added
+from ankigen_core.exceptions import (
+    SecurityError,
+)
 
 # Security: Maximum URL length to prevent abuse
 MAX_URL_LENGTH = 2048
@@ -41,13 +44,9 @@ class SSRFProtectionAdapter(HTTPAdapter):
                     or ip.is_link_local
                     or ip.is_reserved
                 ):
-                    logger.error(
-                        f"SSRF protection: Blocked request to private IP {ip_str} "
-                        f"for hostname {hostname} (DNS rebinding protection)"
-                    )
-                    raise requests.exceptions.ConnectionError(
-                        f"SSRF protection: Cannot connect to private IP {ip_str}"
-                    )
+                    msg = f"SSRF protection: Blocked request to private IP {ip_str} for hostname {hostname}"
+                    logger.error(msg)
+                    raise SecurityError(msg)
             except (socket.gaierror, ValueError) as e:
                 logger.error(
                     f"SSRF protection: DNS resolution failed for {hostname}: {e}"
@@ -295,40 +294,122 @@ class WebCrawler:
 
     # --- End Sitemap Processing Methods ---
 
-    def crawl(
-        self, progress_callback: Optional[Callable[[int, int, str], None]] = None
-    ) -> List[CrawledPage]:
+    def _initialize_crawl_queue(self) -> List[Tuple[str, int, Optional[str]]]:
+        """Initialize the crawl queue from sitemap or start URL.
+
+        Returns:
+            List of tuples (url, depth, parent_url) to visit
+        """
         urls_to_visit: List[Tuple[str, int, Optional[str]]] = []
-        crawled_pages: List[CrawledPage] = []
-        initial_total_for_progress = 0
 
         if self.use_sitemap and self.sitemap_url:
             self.logger.info(f"Attempting to use sitemap: {self.sitemap_url}")
             sitemap_extracted_urls = self._get_urls_from_sitemap()
             if sitemap_extracted_urls:
                 for url in sitemap_extracted_urls:
-                    if self._is_valid_url(
-                        url
-                    ):  # Checks domain, include/exclude patterns
-                        urls_to_visit.append(
-                            (url, 0, None)
-                        )  # Add with depth 0 and None parent
+                    if self._is_valid_url(url):
+                        urls_to_visit.append((url, 0, None))
                 self.logger.info(
                     f"Initialized {len(urls_to_visit)} URLs to visit from sitemap after validation."
                 )
-                initial_total_for_progress = len(urls_to_visit)
             else:
                 self.logger.warning(
-                    "Sitemap processing yielded no URLs, or sitemap_url not set. Falling back to start_url if provided."
+                    "Sitemap processing yielded no URLs. Falling back to start_url."
                 )
-                # Fallback to start_url if sitemap is empty or fails
                 if self._is_valid_url(self.start_url):
-                    urls_to_visit.append((self.start_url, 0, None))  # None parent
-                initial_total_for_progress = len(urls_to_visit)
+                    urls_to_visit.append((self.start_url, 0, None))
         else:
             if self._is_valid_url(self.start_url):
-                urls_to_visit.append((self.start_url, 0, None))  # None parent
-            initial_total_for_progress = len(urls_to_visit)
+                urls_to_visit.append((self.start_url, 0, None))
+
+        return urls_to_visit
+
+    def _extract_page_metadata(
+        self, soup: BeautifulSoup, url: str
+    ) -> Tuple[Optional[str], Optional[str], List[str]]:
+        """Extract title, meta description, and meta keywords from page.
+
+        Args:
+            soup: BeautifulSoup object of the page
+            url: URL being processed (for logging)
+
+        Returns:
+            Tuple of (title, meta_description, meta_keywords_list)
+        """
+        # Extract title
+        page_title_tag = soup.find("title")
+        page_title: Optional[str] = None
+        if isinstance(page_title_tag, Tag) and page_title_tag.string:
+            page_title = page_title_tag.string.strip()
+        else:
+            self.logger.debug(f"No title tag found for {url}")
+
+        # Extract meta description
+        meta_desc_tag = soup.find("meta", attrs={"name": "description"})
+        meta_description: Optional[str] = None
+        if isinstance(meta_desc_tag, Tag):
+            content = meta_desc_tag.get("content")
+            if isinstance(content, str):
+                meta_description = content.strip()
+            elif isinstance(content, list):
+                meta_description = " ".join(str(item) for item in content).strip()
+                self.logger.debug(
+                    f"Meta description for {url} was a list, joined: {meta_description}"
+                )
+        else:
+            self.logger.debug(f"No meta description found for {url}")
+
+        # Extract meta keywords
+        meta_keywords_tag = soup.find("meta", attrs={"name": "keywords"})
+        meta_keywords: List[str] = []
+        if isinstance(meta_keywords_tag, Tag):
+            content_kw = meta_keywords_tag.get("content")
+            raw_keywords_content: str = ""
+            if isinstance(content_kw, str):
+                raw_keywords_content = content_kw
+            elif isinstance(content_kw, list):
+                raw_keywords_content = " ".join(str(item) for item in content_kw)
+                self.logger.debug(
+                    f"Meta keywords for {url} was a list, joined: {raw_keywords_content}"
+                )
+
+            if raw_keywords_content:
+                meta_keywords = [
+                    k.strip() for k in raw_keywords_content.split(",") if k.strip()
+                ]
+        else:
+            self.logger.debug(f"No meta keywords found for {url}")
+
+        return page_title, meta_description, meta_keywords
+
+    def _should_skip_url(self, url: str, depth: int) -> Tuple[bool, Optional[str]]:
+        """Check if URL should be skipped.
+
+        Args:
+            url: URL to check
+            depth: Current depth of URL
+
+        Returns:
+            Tuple of (should_skip, skip_reason)
+        """
+        if url in self.visited_urls:
+            return True, f"Skipped (visited): {url}"
+
+        if depth > self.max_depth:
+            logger.debug(
+                f"Skipping URL {url} due to depth {depth} > max_depth {self.max_depth}"
+            )
+            return True, f"Skipped (max depth): {url}"
+
+        return False, None
+
+    def crawl(
+        self, progress_callback: Optional[Callable[[int, int, str], None]] = None
+    ) -> List[CrawledPage]:
+        # Initialize URLs using helper method
+        urls_to_visit = self._initialize_crawl_queue()
+        crawled_pages: List[CrawledPage] = []
+        initial_total_for_progress = len(urls_to_visit)
 
         processed_count = 0
         while urls_to_visit:
@@ -347,28 +428,16 @@ class WebCrawler:
                     current_url,
                 )
 
-            if current_url in self.visited_urls:
-                self.logger.debug(f"URL already visited: {current_url}. Skipping.")
-                if progress_callback:
-                    # When skipping, processed_count doesn't increment, but one item is removed from effective queue for this iteration.
-                    # current_total_for_progress should reflect this for accuracy if it's dynamic.
-                    # If sitemap, it remains initial_total_for_progress.
+            # Check if URL should be skipped using helper method
+            should_skip, skip_reason = self._should_skip_url(current_url, current_depth)
+            if should_skip:
+                if progress_callback and skip_reason:
                     dynamic_total = (
                         initial_total_for_progress
                         if self.use_sitemap
                         else processed_count + len(urls_to_visit) + 1
                     )
-                    progress_callback(
-                        processed_count,
-                        dynamic_total,
-                        f"Skipped (visited): {current_url}",
-                    )
-                continue
-
-            if current_depth > self.max_depth:
-                logger.debug(
-                    f"Skipping URL {current_url} due to depth {current_depth} > max_depth {self.max_depth}"
-                )
+                    progress_callback(processed_count, dynamic_total, skip_reason)
                 continue
 
             self.logger.info(
@@ -390,52 +459,10 @@ class WebCrawler:
                 html_content = response.text
                 soup = BeautifulSoup(html_content, "html.parser")
 
-                # Revert to original BeautifulSoup parsing logic for title, meta_description, meta_keywords
-                page_title_tag = soup.find("title")
-                page_title: Optional[str] = None
-                if isinstance(page_title_tag, Tag) and page_title_tag.string:
-                    page_title = page_title_tag.string.strip()
-                else:
-                    self.logger.debug(f"No title tag found for {current_url}")
-
-                meta_desc_tag = soup.find("meta", attrs={"name": "description"})
-                meta_description: Optional[str] = None
-                if isinstance(meta_desc_tag, Tag):
-                    content = meta_desc_tag.get("content")
-                    if isinstance(content, str):
-                        meta_description = content.strip()
-                    elif isinstance(content, list):
-                        meta_description = " ".join(
-                            str(item) for item in content
-                        ).strip()
-                        self.logger.debug(
-                            f"Meta description for {current_url} was a list, joined: {meta_description}"
-                        )
-                else:
-                    self.logger.debug(f"No meta description found for {current_url}")
-
-                meta_keywords_tag = soup.find("meta", attrs={"name": "keywords"})
-                meta_keywords: List[str] = []
-                if isinstance(meta_keywords_tag, Tag):
-                    content = meta_keywords_tag.get("content")
-                    raw_keywords_content: str = ""
-                    if isinstance(content, str):
-                        raw_keywords_content = content
-                    elif isinstance(content, list):
-                        raw_keywords_content = " ".join(str(item) for item in content)
-                        self.logger.debug(
-                            f"Meta keywords for {current_url} was a list, joined: {raw_keywords_content}"
-                        )
-
-                    if raw_keywords_content:
-                        meta_keywords = [
-                            k.strip()
-                            for k in raw_keywords_content.split(",")
-                            if k.strip()
-                        ]
-                else:
-                    self.logger.debug(f"No meta keywords found for {current_url}")
-                # End reverted section
+                # Extract metadata using helper method
+                page_title, meta_description, meta_keywords = (
+                    self._extract_page_metadata(soup, current_url)
+                )
 
                 text_content = self._extract_text(soup)
 

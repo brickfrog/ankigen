@@ -12,6 +12,9 @@ from tenacity import (
     retry_if_exception_type,
 )
 from ankigen_core.logging import logger
+from ankigen_core.exceptions import (
+    ValidationError,
+)
 
 # Security: Whitelist pattern for library names and topics
 # Allows: letters, numbers, hyphens, underscores, dots, forward slashes, @scopes
@@ -144,7 +147,7 @@ class Context7Client:
         # Security: Validate library name to prevent injection
         if not self._validate_library_name(library_name):
             logger.error(f"Invalid library name (security): '{library_name}'")
-            raise ValueError(
+            raise ValidationError(
                 f"Invalid library name: must match pattern {SAFE_LIBRARY_PATTERN.pattern}"
             )
 
@@ -278,12 +281,12 @@ class Context7Client:
             or len(library_id) > MAX_STRING_LENGTH
         ):
             logger.error(f"Invalid library ID format (security): '{library_id}'")
-            raise ValueError("Invalid library ID format")
+            raise ValidationError("Invalid library ID format")
 
         # Security: Validate topic if provided
         if topic and not self._validate_topic(topic):
             logger.error(f"Invalid topic (security): '{topic}'")
-            raise ValueError(
+            raise ValidationError(
                 f"Invalid topic: must match pattern {SAFE_TOPIC_PATTERN.pattern}"
             )
 
