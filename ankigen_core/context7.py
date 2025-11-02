@@ -78,11 +78,26 @@ class Context7Client:
                     timeout=SUBPROCESS_TIMEOUT,
                 )
             except asyncio.TimeoutError:
-                process.kill()
-                await process.wait()
+                # Proper process cleanup on timeout
+                try:
+                    if process.returncode is None:  # Process still running
+                        process.kill()
+                        # Wait for process to actually terminate
+                        await asyncio.wait_for(process.wait(), timeout=5.0)
+                except Exception as cleanup_error:
+                    logger.error(f"Error during process cleanup: {cleanup_error}")
                 raise TimeoutError(
                     f"Context7 subprocess timed out after {SUBPROCESS_TIMEOUT}s"
                 )
+            except Exception:
+                # Clean up process on any other error
+                try:
+                    if process.returncode is None:
+                        process.kill()
+                        await asyncio.wait_for(process.wait(), timeout=5.0)
+                except Exception:
+                    pass  # Best effort cleanup
+                raise
 
             # Parse responses
             responses = stdout.decode().strip().split("\n")

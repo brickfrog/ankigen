@@ -1,4 +1,5 @@
 import requests
+from requests.adapters import HTTPAdapter
 from bs4 import BeautifulSoup, Tag
 from urllib.parse import urljoin, urlparse
 import re
@@ -13,6 +14,49 @@ from ankigen_core.logging import logger  # Added
 
 # Security: Maximum URL length to prevent abuse
 MAX_URL_LENGTH = 2048
+
+
+class SSRFProtectionAdapter(HTTPAdapter):
+    """
+    Custom HTTP adapter that prevents SSRF attacks by validating
+    IP addresses at connection time (prevents DNS rebinding attacks).
+    """
+
+    def send(self, request, **kwargs):
+        """Override send to validate IP before making request."""
+        # Parse the URL to get hostname
+        parsed = urlparse(request.url)
+        hostname = parsed.hostname
+
+        if hostname:
+            try:
+                # Resolve hostname to IP at request time (prevents DNS rebinding)
+                ip_str = socket.gethostbyname(hostname)
+                ip = ipaddress.ip_address(ip_str)
+
+                # Block private, loopback, link-local, and reserved addresses
+                if (
+                    ip.is_private
+                    or ip.is_loopback
+                    or ip.is_link_local
+                    or ip.is_reserved
+                ):
+                    logger.error(
+                        f"SSRF protection: Blocked request to private IP {ip_str} "
+                        f"for hostname {hostname} (DNS rebinding protection)"
+                    )
+                    raise requests.exceptions.ConnectionError(
+                        f"SSRF protection: Cannot connect to private IP {ip_str}"
+                    )
+            except (socket.gaierror, ValueError) as e:
+                logger.error(
+                    f"SSRF protection: DNS resolution failed for {hostname}: {e}"
+                )
+                raise requests.exceptions.ConnectionError(
+                    f"DNS resolution failed for {hostname}"
+                )
+
+        return super().send(request, **kwargs)
 
 
 class WebCrawler:
@@ -46,6 +90,12 @@ class WebCrawler:
         self.logger = get_logger()
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": self.user_agent})
+
+        # Security: Add SSRF protection adapter to prevent DNS rebinding attacks
+        ssrf_adapter = SSRFProtectionAdapter()
+        self.session.mount("http://", ssrf_adapter)
+        self.session.mount("https://", ssrf_adapter)
+
         self.rate_limiter = RateLimiter(self.requests_per_second)
 
     def _is_valid_url(self, url: str) -> bool:
