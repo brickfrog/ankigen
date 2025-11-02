@@ -74,6 +74,52 @@ class OpenAIClientManager:
             )
         return self._client
 
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - cleanup resources."""
+        self.close()
+        return False
+
+    async def __aenter__(self):
+        """Async context manager entry."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit - cleanup resources."""
+        await self.aclose()
+        return False
+
+    def close(self) -> None:
+        """Close the OpenAI client synchronously."""
+        if self._client:
+            try:
+                # OpenAI client has a close method for cleanup
+                if hasattr(self._client, "close"):
+                    self._client.close()
+                logger.debug("OpenAI client closed")
+            except Exception as e:
+                logger.warning(f"Error closing OpenAI client: {e}")
+            finally:
+                self._client = None
+
+    async def aclose(self) -> None:
+        """Close the OpenAI client asynchronously."""
+        if self._client:
+            try:
+                # OpenAI async client has an aclose method
+                if hasattr(self._client, "aclose"):
+                    await self._client.aclose()
+                elif hasattr(self._client, "close"):
+                    self._client.close()
+                logger.debug("OpenAI client closed (async)")
+            except Exception as e:
+                logger.warning(f"Error closing OpenAI client: {e}")
+            finally:
+                self._client = None
+
 
 # Retry decorator for API calls - kept similar to original
 @retry(

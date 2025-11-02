@@ -98,6 +98,21 @@ class WebCrawler:
 
         self.rate_limiter = RateLimiter(self.requests_per_second)
 
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - cleanup resources."""
+        self.close()
+        return False
+
+    def close(self) -> None:
+        """Close the requests session and cleanup resources."""
+        if hasattr(self, "session") and self.session:
+            self.session.close()
+            self.logger.debug("WebCrawler session closed")
+
     def _is_valid_url(self, url: str) -> bool:
         """
         Checks if the URL is valid for crawling with SSRF protection.
