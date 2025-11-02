@@ -312,9 +312,9 @@ def generate_cards_from_crawled_content(
     for i, card_obj in enumerate(all_cards):
         # Extract data, assuming it's already plain text from Card object creation
         topic = (
-            card_obj.metadata.get("topic", f"Crawled Content - Card {i+1}")
+            card_obj.metadata.get("topic", f"Crawled Content - Card {i + 1}")
             if card_obj.metadata
-            else f"Crawled Content - Card {i+1}"
+            else f"Crawled Content - Card {i + 1}"
         )
 
         # Ensure list-based metadata are joined as plain strings for DataFrame

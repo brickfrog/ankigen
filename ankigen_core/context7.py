@@ -4,19 +4,37 @@ import asyncio
 import subprocess
 import json
 from typing import Optional, Dict, Any
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
 from ankigen_core.logging import logger
+from ankigen_core.exceptions import (
+    ValidationError,
+)
+
+MAX_STRING_LENGTH = 200  # Prevent excessively long inputs
+SUBPROCESS_TIMEOUT = 60.0  # 60 second timeout for Context7 calls
 
 
 class Context7Client:
     """Context7 MCP client for fetching library documentation"""
 
     def __init__(self):
-        self.server_process = None
+        pass  # No state needed - each call creates fresh subprocess
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((TimeoutError, ConnectionError)),
+        reraise=True,
+    )
     async def call_context7_tool(
         self, tool_name: str, args: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
-        """Call a Context7 tool via direct JSONRPC"""
+        """Call a Context7 tool via direct JSONRPC with retry logic"""
         try:
             # Build the JSONRPC request
             request = {
@@ -47,9 +65,35 @@ class Context7Client:
                 },
             }
 
-            # Send both requests
-            input_data = json.dumps(init_request) + "\n" + json.dumps(request) + "\n"
-            stdout, stderr = await process.communicate(input=input_data.encode())
+            # Send both requests with timeout protection
+            # Optimize: Use list join for string concatenation
+            input_data = "\n".join([json.dumps(init_request), json.dumps(request), ""])
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(input=input_data.encode()),
+                    timeout=SUBPROCESS_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                # Proper process cleanup on timeout
+                try:
+                    if process.returncode is None:  # Process still running
+                        process.kill()
+                        # Wait for process to actually terminate
+                        await asyncio.wait_for(process.wait(), timeout=5.0)
+                except Exception as cleanup_error:
+                    logger.error(f"Error during process cleanup: {cleanup_error}")
+                raise TimeoutError(
+                    f"Context7 subprocess timed out after {SUBPROCESS_TIMEOUT}s"
+                )
+            except Exception:
+                # Clean up process on any other error
+                try:
+                    if process.returncode is None:
+                        process.kill()
+                        await asyncio.wait_for(process.wait(), timeout=5.0)
+                except Exception:
+                    pass  # Best effort cleanup
+                raise
 
             # Parse responses
             responses = stdout.decode().strip().split("\n")
@@ -204,6 +248,15 @@ class Context7Client:
         self, library_id: str, topic: Optional[str] = None, tokens: int = 5000
     ) -> Optional[str]:
         """Get documentation for a library"""
+        # Security: Validate library_id (should start with /)
+        if (
+            not library_id
+            or not library_id.startswith("/")
+            or len(library_id) > MAX_STRING_LENGTH
+        ):
+            logger.error(f"Invalid library ID format (security): '{library_id}'")
+            raise ValidationError("Invalid library ID format")
+
         logger.info(
             f"Fetching docs for: {library_id}" + (f" (topic: {topic})" if topic else "")
         )
@@ -233,7 +286,7 @@ class Context7Client:
         return await self.get_library_docs(library_id, topic, tokens)
 
 
-async def test_context7():
+async def test_context7() -> None:
     """Test the Context7 integration"""
     client = Context7Client()
 

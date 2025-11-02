@@ -250,18 +250,16 @@ def use_selected_subjects(subjects_df: pd.DataFrame | None):
     )
 
 
-def create_crawler_main_mode_elements() -> (
-    Tuple[
-        List[gr.components.Component],  # ui_components (url_input, max_depth, etc.)
-        gr.Button,  # crawl_button
-        gr.Progress,  # progress_bar
-        gr.Textbox,  # progress_status_textbox
-        gr.Textbox,  # custom_system_prompt
-        gr.Textbox,  # custom_user_prompt_template
-        gr.Checkbox,  # use_sitemap_checkbox
-        gr.Textbox,  # sitemap_url_textbox
-    ]
-):
+def create_crawler_main_mode_elements() -> Tuple[
+    List[gr.components.Component],  # ui_components (url_input, max_depth, etc.)
+    gr.Button,  # crawl_button
+    gr.Progress,  # progress_bar
+    gr.Textbox,  # progress_status_textbox
+    gr.Textbox,  # custom_system_prompt
+    gr.Textbox,  # custom_user_prompt_template
+    gr.Checkbox,  # use_sitemap_checkbox
+    gr.Textbox,  # sitemap_url_textbox
+]:
     """Creates the UI components for the Web Crawler mode integrated into the main tab."""
     ui_components: List[gr.components.Component] = []
 

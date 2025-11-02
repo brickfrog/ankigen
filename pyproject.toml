@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ankigen"
 version = "0.2.0"
-description = ""
+description = "AI-powered Anki flashcard generator using OpenAI GPT models with CLI and web interface"
 authors = [
     { name = "Justin", email = "9146678+brickfrog@users.noreply.github.com" },
 ]

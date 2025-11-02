@@ -74,6 +74,52 @@ class OpenAIClientManager:
             )
         return self._client
 
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - cleanup resources."""
+        self.close()
+        return False
+
+    async def __aenter__(self):
+        """Async context manager entry."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit - cleanup resources."""
+        await self.aclose()
+        return False
+
+    def close(self) -> None:
+        """Close the OpenAI client synchronously."""
+        if self._client:
+            try:
+                # OpenAI client has a close method for cleanup
+                if hasattr(self._client, "close"):
+                    self._client.close()
+                logger.debug("OpenAI client closed")
+            except Exception as e:
+                logger.warning(f"Error closing OpenAI client: {e}")
+            finally:
+                self._client = None
+
+    async def aclose(self) -> None:
+        """Close the OpenAI client asynchronously."""
+        if self._client:
+            try:
+                # OpenAI async client has an aclose method
+                if hasattr(self._client, "aclose"):
+                    await self._client.aclose()
+                elif hasattr(self._client, "close"):
+                    self._client.close()
+                logger.debug("OpenAI client closed (async)")
+            except Exception as e:
+                logger.warning(f"Error closing OpenAI client: {e}")
+            finally:
+                self._client = None
+
 
 # Retry decorator for API calls - kept similar to original
 @retry(
@@ -114,6 +160,7 @@ async def structured_output_completion(
         ):
             effective_system_prompt = f"{system_prompt}\nProvide your response as a JSON object matching the specified schema."
 
+        # Security: Add timeout to prevent indefinite hanging
         completion = await openai_client.chat.completions.create(
             model=model,
             messages=[
@@ -122,6 +169,7 @@ async def structured_output_completion(
             ],
             response_format=response_format,  # Pass the dict directly
             temperature=0.7,  # Consider making this configurable
+            timeout=120.0,  # 120 second timeout
         )
 
         if not hasattr(completion, "choices") or not completion.choices:
@@ -252,8 +300,30 @@ async def process_crawled_page(
     custom_system_prompt: Optional[str] = None,
     custom_user_prompt_template: Optional[str] = None,
     max_prompt_content_tokens: int = 6000,
+    cache: Optional[ResponseCache] = None,
 ) -> List[Card]:
-    """Process a crawled page and extract structured Card objects using OpenAI."""
+    """Process a crawled page and extract structured Card objects using OpenAI.
+
+    Args:
+        openai_client: The OpenAI client instance
+        page: The crawled page to process
+        model: The model to use for generation
+        custom_system_prompt: Optional custom system prompt
+        custom_user_prompt_template: Optional custom user prompt template
+        max_prompt_content_tokens: Maximum tokens for content
+        cache: Optional ResponseCache for page-level caching
+
+    Returns:
+        List of generated Card objects
+    """
+    # Check page-level cache first
+    if cache:
+        cache_key = f"{page.url}:{model}"
+        cached_cards = cache.get(cache_key, "page_cache")
+        if cached_cards is not None:
+            logger.info(f"Using cached cards for page: {page.url}")
+            return cached_cards
+
     logger.info(
         f"Processing page: {page.url} with model {model}, max_prompt_content_tokens: {max_prompt_content_tokens}"
     )
@@ -362,6 +432,7 @@ Generate a few high-quality Anki cards from this content.
             f"Attempting to generate cards for {page.url} using model {model}."
         )
         response_format_param = {"type": "json_object"}
+        # Security: Add timeout to prevent indefinite hanging
         response_data = await openai_client.chat.completions.create(
             model=model,
             messages=[
@@ -370,6 +441,7 @@ Generate a few high-quality Anki cards from this content.
             ],
             response_format=response_format_param,
             temperature=0.5,
+            timeout=120.0,  # 120 second timeout
         )
 
         if (
@@ -466,6 +538,12 @@ Generate a few high-quality Anki cards from this content.
             logger.info(
                 f"Successfully generated {len(validated_cards)} Cards from {page.url}."
             )
+            # Cache successful results for page-level caching
+            if cache:
+                cache_key = f"{page.url}:{model}"
+                cache.set(cache_key, "page_cache", validated_cards)
+                logger.debug(f"Cached {len(validated_cards)} cards for {page.url}")
+
         return validated_cards
 
     except json.JSONDecodeError as e:
@@ -509,6 +587,7 @@ async def process_crawled_pages(
     custom_system_prompt: Optional[str] = None,
     custom_user_prompt_template: Optional[str] = None,
     progress_callback: Optional[Callable[[int, int], None]] = None,
+    cache: Optional[ResponseCache] = None,
 ) -> List[Card]:
     if not pages:
         logger.info("No pages provided to process_crawled_pages.")
@@ -536,6 +615,7 @@ async def process_crawled_pages(
                     custom_system_prompt=custom_system_prompt,
                     custom_user_prompt_template=custom_user_prompt_template,
                     max_prompt_content_tokens=max_prompt_content_tokens,
+                    cache=cache,
                 )
                 if page_cards is None:
                     logger.warning(
