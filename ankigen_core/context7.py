@@ -19,7 +19,7 @@ from ankigen_core.exceptions import (
 # Security: Whitelist pattern for library names and topics
 # Allows: letters, numbers, hyphens, underscores, dots, forward slashes, @scopes
 SAFE_LIBRARY_PATTERN = re.compile(r"^[@a-zA-Z0-9._/-]+$")
-SAFE_TOPIC_PATTERN = re.compile(r"^[a-zA-Z0-9\s._-]+$")
+SAFE_TOPIC_PATTERN = re.compile(r"^[a-zA-Z0-9\s.,_-]+$")
 MAX_STRING_LENGTH = 200  # Prevent excessively long inputs
 SUBPROCESS_TIMEOUT = 60.0  # 60 second timeout for Context7 calls
 
