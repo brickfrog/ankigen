@@ -3,7 +3,6 @@
 import asyncio
 import subprocess
 import json
-import re
 from typing import Optional, Dict, Any
 from tenacity import (
     retry,
@@ -16,10 +15,6 @@ from ankigen_core.exceptions import (
     ValidationError,
 )
 
-# Security: Whitelist pattern for library names and topics
-# Allows: letters, numbers, hyphens, underscores, dots, forward slashes, @scopes
-SAFE_LIBRARY_PATTERN = re.compile(r"^[@a-zA-Z0-9._/-]+$")
-SAFE_TOPIC_PATTERN = re.compile(r"^[a-zA-Z0-9\s.,_-]+$")
 MAX_STRING_LENGTH = 200  # Prevent excessively long inputs
 SUBPROCESS_TIMEOUT = 60.0  # 60 second timeout for Context7 calls
 
@@ -29,20 +24,6 @@ class Context7Client:
 
     def __init__(self):
         pass  # No state needed - each call creates fresh subprocess
-
-    @staticmethod
-    def _validate_library_name(library_name: str) -> bool:
-        """Validate library name to prevent injection attacks"""
-        if not library_name or len(library_name) > MAX_STRING_LENGTH:
-            return False
-        return SAFE_LIBRARY_PATTERN.match(library_name) is not None
-
-    @staticmethod
-    def _validate_topic(topic: str) -> bool:
-        """Validate topic string to prevent injection attacks"""
-        if not topic or len(topic) > MAX_STRING_LENGTH:
-            return False
-        return SAFE_TOPIC_PATTERN.match(topic) is not None
 
     @retry(
         stop=stop_after_attempt(3),
@@ -144,13 +125,6 @@ class Context7Client:
 
     async def resolve_library_id(self, library_name: str) -> Optional[str]:
         """Resolve a library name to a Context7-compatible ID"""
-        # Security: Validate library name to prevent injection
-        if not self._validate_library_name(library_name):
-            logger.error(f"Invalid library name (security): '{library_name}'")
-            raise ValidationError(
-                f"Invalid library name: must match pattern {SAFE_LIBRARY_PATTERN.pattern}"
-            )
-
         logger.info(f"Resolving library ID for: {library_name}")
 
         result = await self.call_context7_tool(
@@ -282,13 +256,6 @@ class Context7Client:
         ):
             logger.error(f"Invalid library ID format (security): '{library_id}'")
             raise ValidationError("Invalid library ID format")
-
-        # Security: Validate topic if provided
-        if topic and not self._validate_topic(topic):
-            logger.error(f"Invalid topic (security): '{topic}'")
-            raise ValidationError(
-                f"Invalid topic: must match pattern {SAFE_TOPIC_PATTERN.pattern}"
-            )
 
         logger.info(
             f"Fetching docs for: {library_id}" + (f" (topic: {topic})" if topic else "")
