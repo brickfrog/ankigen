@@ -27,8 +27,10 @@ beartype==0.22.5
     #   py-key-value-shared
 beautifulsoup4==4.13.5
     # via ankigen (pyproject.toml)
-brotli==1.1.0
-    # via gradio
+brotli==1.2.0
+    # via
+    #   ankigen (pyproject.toml)
+    #   gradio
 cached-property==2.0.1
     # via genanki
 cachetools==6.2.1
