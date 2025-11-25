@@ -418,119 +418,173 @@ class WebCrawler:
 
         return False, None
 
+    def _calculate_progress_total(
+        self, processed_count: int, urls_to_visit_len: int, initial_total: int
+    ) -> int:
+        """Calculate the total for progress reporting."""
+        if self.use_sitemap:
+            return initial_total
+        return processed_count + urls_to_visit_len + 1
+
+    def _update_crawl_progress(
+        self,
+        progress_callback: Optional[Callable[[int, int, str], None]],
+        processed_count: int,
+        urls_to_visit_len: int,
+        initial_total: int,
+        message: str,
+    ) -> None:
+        """Update progress callback if provided."""
+        if progress_callback:
+            total = self._calculate_progress_total(
+                processed_count, urls_to_visit_len, initial_total
+            )
+            progress_callback(processed_count, total, message)
+
+    def _fetch_and_parse_url(
+        self, url: str, depth: int, parent_url: Optional[str]
+    ) -> Tuple[CrawledPage, BeautifulSoup]:
+        """Fetch URL and create CrawledPage object.
+
+        Args:
+            url: URL to fetch
+            depth: Current crawl depth
+            parent_url: URL of the parent page
+
+        Returns:
+            Tuple of (CrawledPage, BeautifulSoup) for further processing
+
+        Raises:
+            requests.RequestException: If the HTTP request fails
+        """
+        response = self.session.get(url, timeout=10)
+        response.raise_for_status()
+        html_content = response.text
+        soup = BeautifulSoup(html_content, "html.parser")
+
+        page_title, meta_description, meta_keywords = self._extract_page_metadata(
+            soup, url
+        )
+        text_content = self._extract_text(soup)
+
+        return CrawledPage(
+            url=url,
+            html_content=html_content,
+            text_content=text_content,
+            title=page_title,
+            meta_description=meta_description,
+            meta_keywords=meta_keywords,
+            crawl_depth=depth,
+            parent_url=parent_url,
+        ), soup
+
+    def _enqueue_discovered_links(
+        self,
+        soup: BeautifulSoup,
+        current_url: str,
+        current_depth: int,
+        urls_to_visit: List[Tuple[str, int, Optional[str]]],
+    ) -> None:
+        """Extract links from page and add unvisited ones to queue."""
+        if current_depth >= self.max_depth:
+            return
+
+        found_links = self._extract_links(soup, current_url)
+        self.logger.debug(f"Found {len(found_links)} links on {current_url}")
+        for link in found_links:
+            if link not in self.visited_urls:
+                urls_to_visit.append((link, current_depth + 1, current_url))
+
+    def _handle_crawl_error(self, url: str, error: Exception) -> None:
+        """Log crawl error with appropriate detail level."""
+        if isinstance(error, requests.exceptions.HTTPError):
+            self.logger.error(
+                f"HTTPError for {url}: {error.response.status_code} - {error.response.reason}. "
+                f"Response: {error.response.text[:200]}...",
+                exc_info=False,
+            )
+        elif isinstance(error, requests.exceptions.ConnectionError):
+            self.logger.error(f"ConnectionError for {url}: {error}", exc_info=False)
+        elif isinstance(error, requests.exceptions.Timeout):
+            self.logger.error(f"Timeout for {url}: {error}", exc_info=False)
+        elif isinstance(error, requests.exceptions.RequestException):
+            self.logger.error(f"RequestException for {url}: {error}", exc_info=True)
+        else:
+            self.logger.error(
+                f"An unexpected error occurred while processing {url}: {error}",
+                exc_info=True,
+            )
+
     def crawl(
         self, progress_callback: Optional[Callable[[int, int, str], None]] = None
     ) -> List[CrawledPage]:
-        # Initialize URLs using helper method
+        """Crawl website starting from the configured URL.
+
+        Args:
+            progress_callback: Optional callback for progress updates (processed, total, message)
+
+        Returns:
+            List of CrawledPage objects for successfully crawled pages
+        """
         urls_to_visit = self._initialize_crawl_queue()
         crawled_pages: List[CrawledPage] = []
-        initial_total_for_progress = len(urls_to_visit)
-
+        initial_total = len(urls_to_visit)
         processed_count = 0
+
         while urls_to_visit:
             current_url, current_depth, current_parent_url = urls_to_visit.pop(0)
 
-            current_total_for_progress = (
-                initial_total_for_progress
-                if self.use_sitemap
-                else processed_count + len(urls_to_visit) + 1
+            self._update_crawl_progress(
+                progress_callback,
+                processed_count,
+                len(urls_to_visit),
+                initial_total,
+                current_url,
             )
 
-            if progress_callback:
-                progress_callback(
-                    processed_count,
-                    current_total_for_progress,
-                    current_url,
-                )
-
-            # Check if URL should be skipped using helper method
             should_skip, skip_reason = self._should_skip_url(current_url, current_depth)
             if should_skip:
-                if progress_callback and skip_reason:
-                    dynamic_total = (
-                        initial_total_for_progress
-                        if self.use_sitemap
-                        else processed_count + len(urls_to_visit) + 1
+                if skip_reason:
+                    self._update_crawl_progress(
+                        progress_callback,
+                        processed_count,
+                        len(urls_to_visit),
+                        initial_total,
+                        skip_reason,
                     )
-                    progress_callback(processed_count, dynamic_total, skip_reason)
                 continue
 
+            total = self._calculate_progress_total(
+                processed_count, len(urls_to_visit), initial_total
+            )
             self.logger.info(
-                f"Crawling (Depth {current_depth}): {current_url} ({processed_count + 1}/{current_total_for_progress})"
+                f"Crawling (Depth {current_depth}): {current_url} ({processed_count + 1}/{total})"
             )
 
-            if progress_callback:
-                progress_callback(
-                    processed_count, current_total_for_progress, current_url
-                )
-
             self.visited_urls.add(current_url)
-
             self.rate_limiter.wait()
 
             try:
-                response = self.session.get(current_url, timeout=10)
-                response.raise_for_status()
-                html_content = response.text
-                soup = BeautifulSoup(html_content, "html.parser")
-
-                # Extract metadata using helper method
-                page_title, meta_description, meta_keywords = (
-                    self._extract_page_metadata(soup, current_url)
-                )
-
-                text_content = self._extract_text(soup)
-
-                page_data = CrawledPage(
-                    url=current_url,
-                    html_content=html_content,
-                    text_content=text_content,
-                    title=page_title,
-                    meta_description=meta_description,
-                    meta_keywords=meta_keywords,
-                    crawl_depth=current_depth,
-                    parent_url=current_parent_url,
+                page_data, soup = self._fetch_and_parse_url(
+                    current_url, current_depth, current_parent_url
                 )
                 crawled_pages.append(page_data)
                 self.logger.info(f"Successfully processed and stored: {current_url}")
 
-                if current_depth < self.max_depth:
-                    found_links = self._extract_links(soup, current_url)
-                    self.logger.debug(
-                        f"Found {len(found_links)} links on {current_url}"
-                    )
-                    for link in found_links:
-                        if link not in self.visited_urls:
-                            urls_to_visit.append((link, current_depth + 1, current_url))
+                self._enqueue_discovered_links(
+                    soup, current_url, current_depth, urls_to_visit
+                )
 
-            except requests.exceptions.HTTPError as e:
-                self.logger.error(
-                    f"HTTPError for {current_url}: {e.response.status_code} - {e.response.reason}. Response: {e.response.text[:200]}...",
-                    exc_info=False,
-                )
-                processed_count += 1
-            except requests.exceptions.ConnectionError as e:
-                self.logger.error(
-                    f"ConnectionError for {current_url}: {e}", exc_info=False
-                )
-                processed_count += 1
-            except requests.exceptions.Timeout as e:
-                self.logger.error(f"Timeout for {current_url}: {e}", exc_info=False)
-                processed_count += 1
-            except requests.exceptions.RequestException as e:
-                self.logger.error(
-                    f"RequestException for {current_url}: {e}", exc_info=True
-                )
-                processed_count += 1
             except Exception as e:
-                self.logger.error(
-                    f"An unexpected error occurred while processing {current_url}: {e}",
-                    exc_info=True,
-                )
+                self._handle_crawl_error(current_url, e)
                 processed_count += 1
+                continue
+
+            processed_count += 1
 
         self.logger.info(
-            f"Crawl completed. Total pages processed/attempted: {processed_count}. Successfully crawled pages: {len(crawled_pages)}"
+            f"Crawl completed. Total pages processed/attempted: {processed_count}. "
+            f"Successfully crawled pages: {len(crawled_pages)}"
         )
         if progress_callback:
             progress_callback(processed_count, processed_count, "Crawling complete.")

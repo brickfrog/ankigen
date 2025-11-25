@@ -100,30 +100,17 @@ class BaseAgentWrapper:
             logger.error(f"Failed to initialize agent {self.config.name}: {e}")
             raise
 
-    async def execute(
-        self, user_input: str, context: Optional[Dict[str, Any]] = None
-    ) -> tuple[Any, Dict[str, Any]]:
-        """Execute the agent with user input and optional context"""
-        if not self.agent:
-            await self.initialize()
+    def _enhance_input_with_context(
+        self, user_input: str, context: Optional[Dict[str, Any]]
+    ) -> str:
+        """Add context to user input if provided."""
+        if context is None:
+            return user_input
+        context_str = "\n".join([f"{k}: {v}" for k, v in context.items()])
+        return f"{user_input}\n\nContext:\n{context_str}"
 
-        # Add context to the user input if provided
-        enhanced_input = user_input
-        if context is not None:
-            context_str = "\n".join([f"{k}: {v}" for k, v in context.items()])
-            enhanced_input = f"{user_input}\n\nContext:\n{context_str}"
-
-        # Execute the agent using Runner.run() with retry logic
-        if self.agent is None:
-            raise ValueError("Agent not initialized")
-
-        logger.info(f"🤖 EXECUTING AGENT: {self.config.name}")
-        logger.info(f"📝 INPUT: {enhanced_input[:200]}...")
-
-        import time
-
-        start_time = time.time()
-
+    async def _execute_with_retry(self, enhanced_input: str) -> Any:
+        """Execute agent with retry logic on timeout."""
         for attempt in range(self.config.retry_attempts):
             try:
                 result = await asyncio.wait_for(
@@ -133,63 +120,86 @@ class BaseAgentWrapper:
                     ),
                     timeout=self.config.timeout,
                 )
-                break
+                return result
             except asyncio.TimeoutError:
                 if attempt < self.config.retry_attempts - 1:
                     logger.warning(
-                        f"Agent {self.config.name} timed out (attempt {attempt + 1}/{self.config.retry_attempts}), retrying..."
+                        f"Agent {self.config.name} timed out "
+                        f"(attempt {attempt + 1}/{self.config.retry_attempts}), retrying..."
                     )
                     continue
-                else:
-                    logger.error(
-                        f"Agent {self.config.name} timed out after {self.config.retry_attempts} attempts"
-                    )
-                    raise
+                logger.error(
+                    f"Agent {self.config.name} timed out after {self.config.retry_attempts} attempts"
+                )
+                raise
+        raise RuntimeError("Retry loop exited without result")
 
-        try:
-            execution_time = time.time() - start_time
+    def _extract_and_track_usage(self, result: Any) -> Dict[str, Any]:
+        """Extract usage info from result and track it."""
+        total_usage = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "requests": 0,
+        }
+
+        if hasattr(result, "raw_responses") and result.raw_responses:
+            for response in result.raw_responses:
+                if hasattr(response, "usage") and response.usage:
+                    total_usage["input_tokens"] += response.usage.input_tokens
+                    total_usage["output_tokens"] += response.usage.output_tokens
+                    total_usage["total_tokens"] += response.usage.total_tokens
+                    total_usage["requests"] += response.usage.requests
+
+            track_usage_from_agents_sdk(total_usage, self.config.model)
+            logger.info(f"Agent usage: {total_usage}")
+
+        return total_usage
+
+    def _extract_output(self, result: Any) -> Any:
+        """Extract final output from agent result."""
+        if not (hasattr(result, "new_items") and result.new_items):
+            return str(result)
+
+        from agents.items import ItemHelpers
+
+        text_output = ItemHelpers.text_message_outputs(result.new_items)
+
+        if self.config.output_type and self.config.output_type is not str:
             logger.info(
-                f"Agent {self.config.name} executed successfully in {execution_time:.2f}s"
+                f"Structured output: {type(text_output)} -> {self.config.output_type}"
             )
 
-            # Extract usage information from raw_responses
-            total_usage = {
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "total_tokens": 0,
-                "requests": 0,
-            }
+        return text_output
 
-            if hasattr(result, "raw_responses") and result.raw_responses:
-                for response in result.raw_responses:
-                    if hasattr(response, "usage") and response.usage:
-                        total_usage["input_tokens"] += response.usage.input_tokens
-                        total_usage["output_tokens"] += response.usage.output_tokens
-                        total_usage["total_tokens"] += response.usage.total_tokens
-                        total_usage["requests"] += response.usage.requests
+    async def execute(
+        self, user_input: str, context: Optional[Dict[str, Any]] = None
+    ) -> tuple[Any, Dict[str, Any]]:
+        """Execute the agent with user input and optional context."""
+        if not self.agent:
+            await self.initialize()
 
-                # Track usage with the token tracker
-                track_usage_from_agents_sdk(total_usage, self.config.model)
-                logger.info(f"💰 AGENT USAGE: {total_usage}")
+        if self.agent is None:
+            raise ValueError("Agent not initialized")
 
-            # Extract the final output from the result
-            if hasattr(result, "new_items") and result.new_items:
-                # Get the last message content
-                from agents.items import ItemHelpers
+        enhanced_input = self._enhance_input_with_context(user_input, context)
 
-                text_output = ItemHelpers.text_message_outputs(result.new_items)
+        logger.info(f"Executing agent: {self.config.name}")
+        logger.info(f"Input: {enhanced_input[:200]}...")
 
-                # If we have structured output, the response should already be parsed
-                if self.config.output_type and self.config.output_type is not str:
-                    logger.info(
-                        f"✅ STRUCTURED OUTPUT: {type(text_output)} -> {self.config.output_type}"
-                    )
-                    # The agents SDK should return the structured object directly
-                    return text_output, total_usage
-                else:
-                    return text_output, total_usage
-            else:
-                return str(result), total_usage
+        import time
+
+        start_time = time.time()
+
+        try:
+            result = await self._execute_with_retry(enhanced_input)
+            execution_time = time.time() - start_time
+            logger.info(f"Agent {self.config.name} executed in {execution_time:.2f}s")
+
+            total_usage = self._extract_and_track_usage(result)
+            output = self._extract_output(result)
+
+            return output, total_usage
 
         except asyncio.TimeoutError:
             logger.error(

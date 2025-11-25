@@ -70,10 +70,58 @@ GENERATION_MODES = [
 # Legacy functions removed - all card generation now handled by agent system
 
 
-async def orchestrate_card_generation(  # MODIFIED: Added async
-    client_manager: OpenAIClientManager,  # Expect the manager
-    cache: ResponseCache,  # Expect the cache instance
-    # --- UI Inputs --- (These will be passed from app.py handler)
+def _map_generation_mode_to_subject(generation_mode: str, subject: str) -> str:
+    """Map UI generation mode to agent subject."""
+    if generation_mode == "subject":
+        return subject if subject else "general"
+    elif generation_mode == "path":
+        return "curriculum_design"
+    elif generation_mode == "text":
+        return "content_analysis"
+    return "general"
+
+
+def _build_generation_context(generation_mode: str, source_text: str) -> Dict[str, Any]:
+    """Build context dict for card generation."""
+    context: Dict[str, Any] = {}
+    if generation_mode == "text" and source_text:
+        context["source_text"] = source_text
+    return context
+
+
+def _get_token_usage_html(token_tracker) -> str:
+    """Extract token usage and format as HTML."""
+    try:
+        if hasattr(token_tracker, "get_session_summary"):
+            token_usage = token_tracker.get_session_summary()
+        elif hasattr(token_tracker, "get_session_usage"):
+            token_usage = token_tracker.get_session_usage()
+        else:
+            raise AttributeError("TokenTracker has no session summary method")
+
+        return f"<div style='margin-top: 8px;'><b>Token Usage:</b> {token_usage['total_tokens']} tokens</div>"
+    except Exception as e:
+        logger.error(f"Token usage collection failed: {e}")
+        return "<div style='margin-top: 8px;'><b>Token Usage:</b> No usage data</div>"
+
+
+def _format_cards_to_dataframe(
+    agent_cards: List[Card], subject: str
+) -> tuple[pd.DataFrame, str]:
+    """Format agent cards to DataFrame and generate message."""
+    formatted_cards = format_cards_for_dataframe(
+        agent_cards,
+        topic_name=subject if subject else "General",
+        start_index=1,
+    )
+    output_df = pd.DataFrame(formatted_cards, columns=get_dataframe_columns())
+    total_cards_message = f"<div><b>Cards Generated:</b> <span id='total-cards-count'>{len(output_df)}</span></div>"
+    return output_df, total_cards_message
+
+
+async def orchestrate_card_generation(
+    client_manager: OpenAIClientManager,
+    cache: ResponseCache,
     api_key_input: str,
     subject: str,
     generation_mode: str,
@@ -89,109 +137,66 @@ async def orchestrate_card_generation(  # MODIFIED: Added async
     library_topic: str = None,
 ):
     """Orchestrates the card generation process based on UI inputs."""
-
     logger.info(f"Starting card generation orchestration in {generation_mode} mode")
     logger.debug(
-        f"Parameters: mode={generation_mode}, topics={topic_number}, cards_per_topic={cards_per_topic}, cloze={generate_cloze}"
+        f"Parameters: mode={generation_mode}, topics={topic_number}, "
+        f"cards_per_topic={cards_per_topic}, cloze={generate_cloze}"
     )
 
-    # --- AGENT SYSTEM INTEGRATION ---
-    if AGENTS_AVAILABLE:
-        logger.info("🤖 Using agent system for card generation")
-        try:
-            from ankigen_core.agents.token_tracker import get_token_tracker
+    if not AGENTS_AVAILABLE:
+        logger.error("Agent system is required but not available")
+        gr.Error("Agent system is required but not available")
+        return pd.DataFrame(columns=get_dataframe_columns()), "Agent system error", ""
 
-            token_tracker = get_token_tracker()
+    try:
+        from ankigen_core.agents.token_tracker import get_token_tracker
 
-            orchestrator = AgentOrchestrator(client_manager)
+        token_tracker = get_token_tracker()
+        orchestrator = AgentOrchestrator(client_manager)
 
-            logger.info(f"Using {model_name} for SubjectExpertAgent")
-            await orchestrator.initialize(api_key_input, {"subject_expert": model_name})
+        logger.info(f"Using {model_name} for SubjectExpertAgent")
+        await orchestrator.initialize(api_key_input, {"subject_expert": model_name})
 
-            # Map generation mode to subject
-            agent_subject = "general"
-            if generation_mode == "subject":
-                agent_subject = subject if subject else "general"
-            elif generation_mode == "path":
-                agent_subject = "curriculum_design"
-            elif generation_mode == "text":
-                agent_subject = "content_analysis"
+        agent_subject = _map_generation_mode_to_subject(generation_mode, subject)
+        context = _build_generation_context(generation_mode, source_text)
+        total_cards_needed = topic_number * cards_per_topic
 
-            total_cards_needed = topic_number * cards_per_topic
+        agent_cards, agent_metadata = await orchestrator.generate_cards_with_agents(
+            topic=subject if subject else "Mixed Topics",
+            subject=agent_subject,
+            num_cards=total_cards_needed,
+            difficulty="intermediate",
+            context=context,
+            library_name=library_name,
+            library_topic=library_topic,
+            generate_cloze=generate_cloze,
+        )
 
-            context = {}
-            if generation_mode == "text" and source_text:
-                context["source_text"] = source_text
+        token_usage_html = _get_token_usage_html(token_tracker)
 
-            agent_cards, agent_metadata = await orchestrator.generate_cards_with_agents(
-                topic=subject if subject else "Mixed Topics",
-                subject=agent_subject,
-                num_cards=total_cards_needed,
-                difficulty="intermediate",
-                context=context,
-                library_name=library_name,
-                library_topic=library_topic,
-                generate_cloze=generate_cloze,
+        if agent_cards:
+            output_df, total_cards_message = _format_cards_to_dataframe(
+                agent_cards, subject
             )
+            logger.info(f"Agent system generated {len(output_df)} cards successfully")
+            return output_df, total_cards_message, token_usage_html
 
-            # Get token usage from session
-            try:
-                # Try both method names for compatibility
-                if hasattr(token_tracker, "get_session_summary"):
-                    token_usage = token_tracker.get_session_summary()
-                elif hasattr(token_tracker, "get_session_usage"):
-                    token_usage = token_tracker.get_session_usage()
-                else:
-                    raise AttributeError("TokenTracker has no session summary method")
+        logger.error("Agent system returned no cards")
+        gr.Error("Agent system returned no cards")
+        return (
+            pd.DataFrame(columns=get_dataframe_columns()),
+            "Agent system returned no cards.",
+            "",
+        )
 
-                token_usage_html = f"<div style='margin-top: 8px;'><b>Token Usage:</b> {token_usage['total_tokens']} tokens</div>"
-            except Exception as e:
-                logger.error(f"Token usage collection failed: {e}")
-                token_usage_html = "<div style='margin-top: 8px;'><b>Token Usage:</b> No usage data</div>"
-
-            # Convert agent cards to dataframe format
-            if agent_cards:
-                formatted_cards = format_cards_for_dataframe(
-                    agent_cards,
-                    topic_name=subject if subject else "General",
-                    start_index=1,
-                )
-
-                output_df = pd.DataFrame(
-                    formatted_cards, columns=get_dataframe_columns()
-                )
-                total_cards_message = f"<div><b>Cards Generated:</b> <span id='total-cards-count'>{len(output_df)}</span></div>"
-
-                logger.info(
-                    f"Agent system generated {len(output_df)} cards successfully"
-                )
-                return output_df, total_cards_message, token_usage_html
-            else:
-                logger.error("Agent system returned no cards")
-                gr.Error("🤖 Agent system returned no cards")
-                return (
-                    pd.DataFrame(columns=get_dataframe_columns()),
-                    "Agent system returned no cards.",
-                    "",
-                )
-
-        except Exception as e:
-            logger.error(f"Agent system failed: {e}")
-            gr.Error(f"🤖 Agent system error: {str(e)}")
-            return (
-                pd.DataFrame(columns=get_dataframe_columns()),
-                f"Agent system error: {str(e)}",
-                "",
-            )
-
-    # Agent system is required and should never fail to be available
-    logger.error("Agent system failed but is required - this should not happen")
-    gr.Error("Agent system is required but not available")
-    return (
-        pd.DataFrame(columns=get_dataframe_columns()),
-        "Agent system error",
-        "",
-    )
+    except Exception as e:
+        logger.error(f"Agent system failed: {e}")
+        gr.Error(f"Agent system error: {str(e)}")
+        return (
+            pd.DataFrame(columns=get_dataframe_columns()),
+            f"Agent system error: {str(e)}",
+            "",
+        )
 
 
 # Legacy helper functions removed - all processing now handled by agent system

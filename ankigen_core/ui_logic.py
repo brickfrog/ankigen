@@ -3,7 +3,9 @@
 import gradio as gr
 import pandas as pd  # Needed for use_selected_subjects type hinting
 from typing import (
+    Callable,
     List,
+    Optional,
     Tuple,
 )
 from urllib.parse import urlparse
@@ -12,7 +14,7 @@ from urllib.parse import urlparse
 import re  # For URL validation and filename sanitization
 import asyncio
 
-from ankigen_core.crawler import WebCrawler
+from ankigen_core.crawler import CrawledPage, WebCrawler
 from ankigen_core.llm_interface import (
     OpenAIClientManager,
 )
@@ -436,6 +438,132 @@ def _basic_sanitize_filename(name: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_.-]", "_", name)
 
 
+def _validate_crawl_url(url: str) -> bool:
+    """Validate URL for crawling."""
+    if not url or not url.startswith(("http://", "https://")):
+        gr.Warning("Invalid URL provided. Please enter a valid http/https URL.")
+        return False
+    try:
+        urlparse(url)
+        return True
+    except Exception:
+        return False
+
+
+def _create_web_crawler(
+    url: str,
+    max_depth: int,
+    include_patterns: str,
+    exclude_patterns: str,
+    use_sitemap: bool,
+    sitemap_url_str: str,
+) -> WebCrawler:
+    """Create configured WebCrawler instance."""
+    include_list = [p.strip() for p in include_patterns.split(",") if p.strip()]
+    exclude_list = [p.strip() for p in exclude_patterns.split(",") if p.strip()]
+
+    return WebCrawler(
+        start_url=url,
+        max_depth=max_depth,
+        include_patterns=include_list,
+        exclude_patterns=exclude_list,
+        use_sitemap=use_sitemap,
+        sitemap_url=sitemap_url_str
+        if use_sitemap and sitemap_url_str.strip()
+        else None,
+    )
+
+
+def _create_crawl_progress_callback(
+    progress: gr.Progress,
+) -> Tuple[Callable[[int, int, str], None], List[int]]:
+    """Create progress callback for crawler with mutable state container."""
+    total_urls_container = [0]  # Mutable container for nonlocal-like behavior
+
+    def callback(processed_count: int, total_urls: int, current_url: str):
+        total_urls_container[0] = total_urls
+        if total_urls_container[0] > 0:
+            progress(
+                0.1 + (processed_count / total_urls_container[0]) * 0.4,
+                desc=f"Crawling: {processed_count}/{total_urls_container[0]} URLs. Current: {current_url}",
+            )
+        else:
+            progress(
+                0.1 + processed_count * 0.01,
+                desc=f"Crawling: {processed_count} URLs discovered. Current: {current_url}",
+            )
+
+    return callback, total_urls_container
+
+
+async def _perform_web_crawl(
+    crawler: WebCrawler,
+    progress: gr.Progress,
+    url: str,
+) -> Optional[List[CrawledPage]]:
+    """Execute web crawl and return pages or None if empty."""
+    callback, _ = _create_crawl_progress_callback(progress)
+
+    crawler_ui_logger.info(f"Starting crawl for {url}...")
+    progress(0.15, desc=f"Starting crawl for {url}...")
+
+    crawled_pages = await asyncio.to_thread(crawler.crawl, progress_callback=callback)
+
+    crawler_ui_logger.info(f"Crawling finished. Found {len(crawled_pages)} pages.")
+    progress(0.5, desc=f"Crawling finished. Found {len(crawled_pages)} pages.")
+
+    return crawled_pages if crawled_pages else None
+
+
+async def _process_crawled_with_agents(
+    crawled_pages: List[CrawledPage],
+    client_manager: OpenAIClientManager,
+    url: str,
+    progress: gr.Progress,
+) -> Tuple[List[Card], str]:
+    """Process crawled content with agent system."""
+    crawler_ui_logger.info("Using agent system for web crawling card generation")
+
+    orchestrator = AgentOrchestrator(client_manager)
+    # API key is already configured in client_manager, pass empty string as placeholder
+    await orchestrator.initialize("")
+
+    combined_content = "\n\n--- PAGE BREAK ---\n\n".join(
+        [
+            f"URL: {page.url}\nTitle: {page.title}\nContent: {page.text_content[:2000]}..."
+            for page in crawled_pages[:10]
+        ]
+    )
+
+    context = {
+        "source_text": combined_content,
+        "crawl_source": url,
+        "pages_crawled": len(crawled_pages),
+    }
+
+    progress(0.6, desc="Processing with agent system...")
+
+    agent_cards, _ = await orchestrator.generate_cards_with_agents(
+        topic=f"Content from {url}",
+        subject="web_content",
+        num_cards=min(len(crawled_pages) * 3, 50),
+        difficulty="intermediate",
+        enable_quality_pipeline=True,
+        context=context,
+    )
+
+    if agent_cards:
+        progress(0.9, desc=f"Agent system generated {len(agent_cards)} cards")
+        final_message = (
+            f"Agent system processed content from {len(crawled_pages)} pages. "
+            f"Generated {len(agent_cards)} high-quality cards."
+        )
+    else:
+        final_message = "Agent system returned no cards"
+
+    return agent_cards or [], final_message
+
+
 async def crawl_and_generate(
     url: str,
     max_depth: int,
@@ -453,145 +581,46 @@ async def crawl_and_generate(
     status_textbox: gr.Textbox,
 ) -> Tuple[str, List[dict], List[Card]]:
     """Crawls a website, generates Anki cards, and prepares them for export/display."""
-    # Initialize crawler_ui_logger if it's meant to be used here, e.g., at the start of the function
-    # For now, assuming it's available in the scope (e.g., global or passed in if it were a class)
-    # If it's a module-level logger, it should be fine.
-
-    # Ensure the status_textbox is updated via gr.Info or similar if needed
-    # as it's a parameter but not directly used for output updates in the provided snippet.
-    # It might be used by side-effect if gr.Info/gr.Warning updates it globally, or if it's part of `progress`.
-
-    # The `status_textbox` parameter is not directly used to set a value in the return,
-    # but `gr.Info` might update a default status area, or it's for other UI purposes.
-
     crawler_ui_logger.info(f"Crawl and generate called for URL: {url}")
-    if not url or not url.startswith(("http://", "https://")):
-        gr.Warning("Invalid URL provided. Please enter a valid http/https URL.")
+
+    if not _validate_crawl_url(url):
         return "Invalid URL", [], []
 
     try:
-        urlparse(url)
-        # domain = parsed_url.netloc # allowed_domains is removed from WebCrawler call
-        # if not domain:
-        #     gr.Warning("Could not parse domain from URL. Please enter a valid URL.")
-        #     return "Invalid URL (cannot parse domain)", [], []
-
-        include_list = [p.strip() for p in include_patterns.split(",") if p.strip()]
-        exclude_list = [p.strip() for p in exclude_patterns.split(",") if p.strip()]
-
-        # WebCrawler instantiation updated to remove parameters causing issues.
-        # The WebCrawler will use its defaults or other configured ways for these.
-        # The 'requests_per_second' from UI maps to 'delay_between_requests' internally if crawler supports it,
-        # but since 'delay_between_requests' was also flagged, we remove it.
-        # The WebCrawler class itself needs to be checked for its actual constructor parameters.
-        crawler = WebCrawler(
-            start_url=url,
-            max_depth=max_depth,  # Assuming max_depth is still a valid param
-            # allowed_domains=[domain], # Removed based on linter error
-            # delay_between_requests=1.0 / crawler_requests_per_second # Removed
-            # if crawler_requests_per_second > 0
-            # else 0.1,
-            # max_pages=500, # Removed
-            include_patterns=include_list,  # Assuming this is valid
-            exclude_patterns=exclude_list,  # Assuming this is valid
-            use_sitemap=use_sitemap,  # Assuming this is valid
-            sitemap_url=sitemap_url_str
-            if use_sitemap and sitemap_url_str and sitemap_url_str.strip()
-            else None,
+        crawler = _create_web_crawler(
+            url,
+            max_depth,
+            include_patterns,
+            exclude_patterns,
+            use_sitemap,
+            sitemap_url_str,
         )
 
-        total_urls_for_progress = 0
-
-        def crawler_progress_callback(
-            processed_count: int, total_urls: int, current_url_processing: str
-        ):
-            nonlocal total_urls_for_progress
-            total_urls_for_progress = total_urls
-            if total_urls_for_progress > 0:
-                progress(
-                    0.1 + (processed_count / total_urls_for_progress) * 0.4,
-                    desc=f"Crawling: {processed_count}/{total_urls_for_progress} URLs. Current: {current_url_processing}",
-                )
-            else:
-                progress(
-                    0.1 + processed_count * 0.01,
-                    desc=f"Crawling: {processed_count} URLs discovered. Current: {current_url_processing}",
-                )
-
-        crawler_ui_logger.info(f"Starting crawl for {url}...")
-        progress(0.15, desc=f"Starting crawl for {url}...")
-        crawled_pages = await asyncio.to_thread(
-            crawler.crawl, progress_callback=crawler_progress_callback
-        )
-        crawler_ui_logger.info(f"Crawling finished. Found {len(crawled_pages)} pages.")
-        progress(0.5, desc=f"Crawling finished. Found {len(crawled_pages)} pages.")
-
+        crawled_pages = await _perform_web_crawl(crawler, progress, url)
         if not crawled_pages:
             progress(1.0, desc="No pages were crawled. Check URL and patterns.")
-            # Return structure: (status_message, df_data, raw_cards_data)
             return (
                 "No pages were crawled. Check URL and patterns.",
                 pd.DataFrame().to_dict(orient="records"),
                 [],
             )
 
-        # --- AGENT SYSTEM INTEGRATION FOR WEB CRAWLING ---
-        crawler_ui_logger.info("🤖 Using agent system for web crawling card generation")
-
-        # Initialize agent orchestrator
-        orchestrator = AgentOrchestrator(client_manager)
-        await orchestrator.initialize("dummy-key")  # Key already in client_manager
-
-        # Combine all crawled content into a single context
-        combined_content = "\n\n--- PAGE BREAK ---\n\n".join(
-            [
-                f"URL: {page.url}\nTitle: {page.title}\nContent: {page.text_content[:2000]}..."
-                for page in crawled_pages[
-                    :10
-                ]  # Limit to first 10 pages to avoid token limits
-            ]
-        )
-
-        context = {
-            "source_text": combined_content,
-            "crawl_source": url,
-            "pages_crawled": len(crawled_pages),
-        }
-
-        progress(0.6, desc="🤖 Processing with agent system...")
-
-        # Generate cards with agents
-        agent_cards, agent_metadata = await orchestrator.generate_cards_with_agents(
-            topic=f"Content from {url}",
-            subject="web_content",
-            num_cards=min(len(crawled_pages) * 3, 50),  # 3 cards per page, max 50
-            difficulty="intermediate",
-            enable_quality_pipeline=True,
-            context=context,
+        agent_cards, final_message = await _process_crawled_with_agents(
+            crawled_pages,
+            client_manager,
+            url,
+            progress,
         )
 
         if agent_cards:
-            progress(0.9, desc=f"🤖 Agent system generated {len(agent_cards)} cards")
-
             cards_for_dataframe_export = generate_cards_from_crawled_content(
                 agent_cards
             )
-
-            final_message = f"🤖 Agent system processed content from {len(crawled_pages)} pages. Generated {len(agent_cards)} high-quality cards."
             progress(1.0, desc=final_message)
-
-            return (
-                final_message,
-                cards_for_dataframe_export,
-                agent_cards,
-            )
+            return final_message, cards_for_dataframe_export, agent_cards
         else:
-            progress(1.0, desc="🤖 Agent system returned no cards")
-            return (
-                "Agent system returned no cards",
-                pd.DataFrame().to_dict(orient="records"),
-                [],
-            )
+            progress(1.0, desc=final_message)
+            return final_message, pd.DataFrame().to_dict(orient="records"), []
 
     except ConnectionError as e:
         crawler_ui_logger.error(f"Connection error during crawl: {e}", exc_info=True)
@@ -617,14 +646,6 @@ async def crawl_and_generate(
             pd.DataFrame().to_dict(orient="records"),
             [],
         )
-
-    final_message = f"Content crawled and processed. {len(cards_for_dataframe_export) if cards_for_dataframe_export else 0} potential cards prepared. Load them into the main table for review and export."
-    progress(1.0, desc=final_message)
-    return (
-        final_message,
-        cards_for_dataframe_export,
-        agent_cards,
-    )  # agent_cards is List[Card]
 
 
 # --- Card Preview and Editing Utilities (Task 13.3) ---

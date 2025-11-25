@@ -123,6 +123,129 @@ class Context7Client:
             logger.error(f"Error calling Context7 tool {tool_name}: {e}")
             return {"error": str(e), "success": False}
 
+    def _parse_library_response(self, text: str) -> list[Dict[str, Any]]:
+        """Parse Context7 response text into list of library dicts.
+
+        Args:
+            text: Raw text response from Context7
+
+        Returns:
+            List of library dicts with keys: title, id, snippets, trust
+        """
+        libraries = []
+        lines = text.split("\n")
+        current_lib: Dict[str, Any] = {}
+
+        for line in lines:
+            line = line.strip()
+
+            if line.startswith("- Title:"):
+                if current_lib and current_lib.get("id"):
+                    libraries.append(current_lib)
+                current_lib = {"title": line.replace("- Title:", "").strip().lower()}
+
+            elif line.startswith("- Context7-compatible library ID:"):
+                lib_id = line.replace("- Context7-compatible library ID:", "").strip()
+                if current_lib is not None:
+                    current_lib["id"] = lib_id
+
+            elif line.startswith("- Code Snippets:"):
+                snippets_str = line.replace("- Code Snippets:", "").strip()
+                try:
+                    if current_lib is not None:
+                        current_lib["snippets"] = int(snippets_str)
+                except ValueError:
+                    pass
+
+            elif line.startswith("- Trust Score:"):
+                score_str = line.replace("- Trust Score:", "").strip()
+                try:
+                    if current_lib is not None:
+                        current_lib["trust"] = float(score_str)
+                except ValueError:
+                    pass
+
+        if current_lib and current_lib.get("id"):
+            libraries.append(current_lib)
+
+        return libraries
+
+    def _score_library(self, lib: Dict[str, Any], search_term: str) -> float:
+        """Score a library based on how well it matches the search term.
+
+        Args:
+            lib: Library dict with title, id, snippets, trust
+            search_term: Lowercase search term
+
+        Returns:
+            Score (higher is better match)
+        """
+        score = 0.0
+        lib_title = lib.get("title", "")
+        lib_id = lib["id"].lower()
+
+        # Exact title match gets highest priority
+        if lib_title == search_term:
+            score += 10000
+        elif lib_id == f"/{search_term}-dev/{search_term}":
+            score += 5000
+        elif f"/{search_term}/" in lib_id or lib_id.endswith(f"/{search_term}"):
+            score += 2000
+        elif search_term in lib_title:
+            if lib_title == search_term:
+                score += 1000
+            elif lib_title.startswith(search_term):
+                score += 200
+            else:
+                score += 50
+
+        # Bonus for code snippets (indicates main library)
+        snippets = lib.get("snippets", 0)
+        score += snippets / 10
+
+        # Bonus for trust score (high trust = official/authoritative)
+        trust = lib.get("trust", 0)
+        score += trust * 100
+
+        return score
+
+    def _select_best_library(
+        self, libraries: list[Dict[str, Any]], search_term: str
+    ) -> Optional[Dict[str, Any]]:
+        """Select the best matching library from a list.
+
+        Args:
+            libraries: List of library dicts
+            search_term: Lowercase search term
+
+        Returns:
+            Best matching library dict, or None if no match
+        """
+        best_lib = None
+        best_score = -1.0
+
+        for lib in libraries:
+            score = self._score_library(lib, search_term)
+
+            if search_term in lib.get("title", "") or search_term in lib["id"].lower():
+                logger.debug(
+                    f"Scoring {lib['id']}: title='{lib.get('title', '')}', "
+                    f"snippets={lib.get('snippets', 0)}, trust={lib.get('trust', 0)}, score={score:.2f}"
+                )
+
+            if score > best_score:
+                best_score = score
+                best_lib = lib
+
+        if best_lib:
+            logger.info(
+                f"Selected library: {best_lib['id']} (title: {best_lib.get('title', 'unknown')}, "
+                f"snippets: {best_lib.get('snippets', 0)}, trust: {best_lib.get('trust', 0)}, "
+                f"score: {best_score:.2f})"
+            )
+
+        return best_lib
+
     async def resolve_library_id(self, library_name: str) -> Optional[str]:
         """Resolve a library name to a Context7-compatible ID"""
         logger.info(f"Resolving library ID for: {library_name}")
@@ -131,115 +254,19 @@ class Context7Client:
             "resolve-library-id", {"libraryName": library_name}
         )
 
-        if result and result.get("success") and result.get("text"):
-            text = result["text"]
+        if not (result and result.get("success") and result.get("text")):
+            logger.warning(f"Could not resolve library ID for '{library_name}'")
+            return None
 
-            # Parse the structured response format
-            libraries = []
-            lines = text.split("\n")
+        libraries = self._parse_library_response(result["text"])
+        if not libraries:
+            logger.warning(f"Could not resolve library ID for '{library_name}'")
+            return None
 
-            current_lib = {}
-            for line in lines:
-                line = line.strip()
-
-                # Parse title
-                if line.startswith("- Title:"):
-                    if current_lib and current_lib.get("id"):
-                        libraries.append(current_lib)
-                    current_lib = {
-                        "title": line.replace("- Title:", "").strip().lower()
-                    }
-
-                # Parse library ID
-                elif line.startswith("- Context7-compatible library ID:"):
-                    lib_id = line.replace(
-                        "- Context7-compatible library ID:", ""
-                    ).strip()
-                    if current_lib is not None:
-                        current_lib["id"] = lib_id
-
-                # Parse code snippets count
-                elif line.startswith("- Code Snippets:"):
-                    snippets_str = line.replace("- Code Snippets:", "").strip()
-                    try:
-                        snippets = int(snippets_str)
-                        if current_lib is not None:
-                            current_lib["snippets"] = snippets
-                    except ValueError:
-                        pass
-
-                # Parse trust score
-                elif line.startswith("- Trust Score:"):
-                    score_str = line.replace("- Trust Score:", "").strip()
-                    try:
-                        trust = float(score_str)
-                        if current_lib is not None:
-                            current_lib["trust"] = trust
-                    except ValueError:
-                        pass
-
-            # Add the last library if exists
-            if current_lib and current_lib.get("id"):
-                libraries.append(current_lib)
-
-            # If we found libraries, pick the best match
-            if libraries:
-                search_term = library_name.lower()
-
-                # Score each library
-                best_lib = None
-                best_score = -1
-
-                for lib in libraries:
-                    score = 0
-                    lib_title = lib.get("title", "")
-                    lib_id = lib["id"].lower()
-
-                    # Exact title match gets highest priority
-                    if lib_title == search_term:
-                        score += 10000
-                    # Check if it's exactly "pandas" in the path (not geopandas, etc)
-                    elif lib_id == f"/{search_term}-dev/{search_term}":
-                        score += 5000
-                    elif f"/{search_term}/" in lib_id or lib_id.endswith(
-                        f"/{search_term}"
-                    ):
-                        score += 2000
-                    # Partial title match (but penalize if it's a compound like "geopandas")
-                    elif search_term in lib_title:
-                        if lib_title == search_term:
-                            score += 1000
-                        elif lib_title.startswith(search_term):
-                            score += 200
-                        else:
-                            score += 50
-
-                    # Strong bonus for code snippets (indicates main library)
-                    snippets = lib.get("snippets", 0)
-                    score += snippets / 10  # Pandas has 7386 snippets
-
-                    # Significant bonus for trust score (high trust = official/authoritative)
-                    trust = lib.get("trust", 0)
-                    score += trust * 100  # Trust 9.2 = 920 points, Trust 7 = 700 points
-
-                    # Debug logging
-                    if search_term in lib_title or search_term in lib_id:
-                        logger.debug(
-                            f"Scoring {lib['id']}: title='{lib_title}', snippets={snippets}, "
-                            f"trust={trust}, score={score:.2f}"
-                        )
-
-                    if score > best_score:
-                        best_score = score
-                        best_lib = lib
-
-                if best_lib:
-                    logger.info(
-                        f"Resolved '{library_name}' to ID: {best_lib['id']} "
-                        f"(title: {best_lib.get('title', 'unknown')}, snippets: {best_lib.get('snippets', 0)}, "
-                        f"trust: {best_lib.get('trust', 0)}, score: {best_score:.2f})"
-                    )
-                    return best_lib["id"]
+        best_lib = self._select_best_library(libraries, library_name.lower())
+        if best_lib:
+            logger.info(f"Resolved '{library_name}' to ID: {best_lib['id']}")
+            return best_lib["id"]
 
         logger.warning(f"Could not resolve library ID for '{library_name}'")
         return None

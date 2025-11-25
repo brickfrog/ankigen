@@ -34,6 +34,25 @@ class TokenTracker:
     def count_tokens_for_messages(
         self, messages: List[Dict[str, str]], model: str
     ) -> int:
+        """
+        Count total tokens for a list of chat messages using tiktoken.
+
+        Implements OpenAI's token counting algorithm for chat completions:
+        - Each message adds 3 tokens for role/content/structure overhead
+        - Message names add an additional token
+        - The entire message list adds 3 tokens for conversation wrapper
+
+        The encoding is selected based on the model:
+        - Attempts to use model-specific encoding via tiktoken
+        - Falls back to 'o200k_base' (GPT-4 Turbo encoding) for unknown models
+
+        Args:
+            messages: List of message dicts (each with 'role', 'content', optional 'name')
+            model: OpenAI model identifier (e.g., 'gpt-4.1', 'gpt-4o')
+
+        Returns:
+            Total tokens required to send these messages to the model
+        """
         try:
             encoding = tiktoken.encoding_for_model(model)
         except KeyError:
@@ -60,11 +79,6 @@ class TokenTracker:
             encoding = tiktoken.get_encoding("o200k_base")
 
         return len(encoding.encode(text))
-
-    def estimate_cost(
-        self, prompt_tokens: int, completion_tokens: int, model: str
-    ) -> Optional[float]:
-        return None
 
     def track_usage_from_response(
         self, response_data, model: str
@@ -98,10 +112,7 @@ class TokenTracker:
     ) -> TokenUsage:
         total_tokens = prompt_tokens + completion_tokens
 
-        if actual_cost is not None:
-            final_cost = actual_cost
-        else:
-            final_cost = self.estimate_cost(prompt_tokens, completion_tokens, model)
+        final_cost = actual_cost  # Cost estimation removed - rely on API-provided costs
 
         usage = TokenUsage(
             prompt_tokens=prompt_tokens,
