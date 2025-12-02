@@ -369,5 +369,5 @@ uvicorn==0.34.3
     #   mcp
 websockets==15.0.1
     # via fastmcp
-werkzeug==3.1.1
+werkzeug==3.1.4
     # via openapi-core
