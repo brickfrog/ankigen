@@ -91,7 +91,7 @@ class AgentConfigManager:
 
             # Default models for each agent type
             default_models = {
-                "subject_expert_model": "gpt-4.1",
+                "subject_expert_model": "gpt-5.1",
             }
 
             # Simple mapping: agent_name -> agent_name_model
@@ -111,7 +111,7 @@ class AgentConfigManager:
                 config = AgentConfig(
                     name=agent_data.get("name", agent_name),
                     instructions=agent_data.get("instructions", ""),
-                    model=agent_data.get("model", "gpt-4"),
+                    model=agent_data.get("model", "gpt-5.1"),
                     temperature=agent_data.get("temperature", 0.7),
                     max_tokens=agent_data.get("max_tokens"),
                     timeout=agent_data.get("timeout", 30.0),
@@ -176,7 +176,7 @@ class AgentConfigManager:
                 config = AgentConfig(
                     name=agent_name,
                     instructions=agent_data.get("instructions", ""),
-                    model=agent_data.get("model", "gpt-4.1"),
+                    model=agent_data.get("model", "gpt-5.1"),
                     temperature=agent_data.get("temperature", 0.7),
                     max_tokens=agent_data.get("max_tokens"),
                     timeout=agent_data.get("timeout", 30.0),

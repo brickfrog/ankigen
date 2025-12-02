@@ -1,38 +1,31 @@
 # Module for OpenAI client management and API call logic
 
+import asyncio
+import time
+from typing import Callable, List, Optional, TypeVar
+
+import tiktoken
+from agents import Agent, ModelSettings, Runner, set_default_openai_client
 from openai import (
+    APIConnectionError,
+    APIStatusError,
     AsyncOpenAI,
     OpenAIError,
-    APIConnectionError,  # For more specific retry
-    RateLimitError,  # For more specific retry
-    APIStatusError,  # For retry on 5xx errors
-)  # Added OpenAIError for specific exception handling
-import json
-import time  # Added for process_crawled_pages later, but good to have
-from typing import List, Optional, Callable  # Added List, Optional, Callable
+    RateLimitError,
+)
+from pydantic import BaseModel
 from tenacity import (
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
 )
-import asyncio  # Import asyncio for gather
-import tiktoken  # Added tiktoken
 
-# Imports from our new core modules
-from ankigen_core.logging import logger  # Updated to use the new logger
-from ankigen_core.utils import ResponseCache  # Removed get_logger
-from ankigen_core.models import (
-    CrawledPage,
-    Card,
-    CardFront,
-    CardBack,
-)  # Added CrawledPage, Card, CardFront, CardBack
-# We will need Pydantic models if response_format is a Pydantic model,
-# but for now, it's a dict like {"type": "json_object"}.
-# from ankigen_core.models import ... # Placeholder if needed later
+from ankigen_core.logging import logger
+from ankigen_core.models import Card, CardBack, CardFront, CrawledPage
+from ankigen_core.utils import ResponseCache
 
-# logger = get_logger() # Removed, using imported logger
+T = TypeVar("T", bound=BaseModel)
 
 
 class OpenAIClientManager:
@@ -121,106 +114,173 @@ class OpenAIClientManager:
                 self._client = None
 
 
-# Retry decorator for API calls - kept similar to original
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=4, max=10),
-    retry=retry_if_exception_type(
-        Exception
-    ),  # Consider refining this to specific network/API errors
-    before_sleep=lambda retry_state: logger.warning(
-        f"Retrying structured_output_completion (attempt {retry_state.attempt_number}) due to {retry_state.outcome.exception() if retry_state.outcome else 'unknown reason'}"
-    ),
-)
-async def structured_output_completion(
-    openai_client: AsyncOpenAI,  # Expecting an initialized AsyncOpenAI client instance
+# --- Agents SDK Utility ---
+
+
+async def structured_agent_call(
+    openai_client: AsyncOpenAI,
     model: str,
-    response_format: dict,  # e.g., {"type": "json_object"}
+    instructions: str,
+    user_input: str,
+    output_type: type[T],
+    cache: Optional[ResponseCache] = None,
+    cache_key: Optional[str] = None,
+    temperature: float = 0.7,
+    timeout: float = 120.0,
+    retry_attempts: int = 3,
+) -> T:
+    """
+    Make a single-turn structured output call using the agents SDK.
+
+    This is a lightweight wrapper for simple structured output calls,
+    not intended for complex multi-agent workflows.
+
+    Args:
+        openai_client: AsyncOpenAI client instance
+        model: Model name (e.g., "gpt-5.1", "gpt-5.1-chat-latest")
+        instructions: System instructions for the agent
+        user_input: User prompt/input
+        output_type: Pydantic model class for structured output
+        cache: Optional ResponseCache instance
+        cache_key: Cache key (required if cache is provided)
+        temperature: Model temperature (default 0.7)
+        timeout: Request timeout in seconds (default 120)
+        retry_attempts: Number of retry attempts (default 3)
+
+    Returns:
+        Instance of output_type with the structured response
+    """
+    # 1. Check cache first
+    if cache and cache_key:
+        cached = cache.get(cache_key, model)
+        if cached is not None:
+            logger.info(f"Using cached response for model {model}")
+            # Reconstruct Pydantic model from cached dict
+            if isinstance(cached, dict):
+                return output_type.model_validate(cached)
+            return cached
+
+    # 2. Set up the OpenAI client for agents SDK
+    set_default_openai_client(openai_client, use_for_tracing=False)
+
+    # 3. Build model settings with GPT-5.1 reasoning support
+    model_settings_kwargs: dict = {"temperature": temperature}
+
+    # GPT-5.1 (not chat-latest) supports reasoning_effort
+    if model.startswith("gpt-5") and "chat-latest" not in model:
+        from openai.types.shared import Reasoning
+
+        model_settings_kwargs["reasoning"] = Reasoning(effort="none")
+
+    model_settings = ModelSettings(**model_settings_kwargs)
+
+    # 4. Create agent with structured output
+    agent = Agent(
+        name="structured_output_agent",
+        instructions=instructions,
+        model=model,
+        model_settings=model_settings,
+        output_type=output_type,
+    )
+
+    # 5. Execute with retry and timeout
+    last_error: Optional[Exception] = None
+    for attempt in range(retry_attempts):
+        try:
+            result = await asyncio.wait_for(
+                Runner.run(agent, user_input),
+                timeout=timeout,
+            )
+
+            # 6. Extract structured output
+            output = result.final_output
+
+            # 7. Cache successful result (as dict for serialization)
+            if cache and cache_key and output is not None:
+                if isinstance(output, BaseModel):
+                    cache.set(cache_key, model, output.model_dump())
+                else:
+                    cache.set(cache_key, model, output)
+
+            logger.debug(f"Successfully received response from model {model}")
+            return output
+
+        except asyncio.TimeoutError as e:
+            last_error = e
+            if attempt < retry_attempts - 1:
+                wait_time = 4 * (2**attempt)  # Exponential backoff
+                logger.warning(
+                    f"Agent timed out (attempt {attempt + 1}/{retry_attempts}), "
+                    f"retrying in {wait_time}s..."
+                )
+                await asyncio.sleep(wait_time)
+                continue
+            logger.error(f"Agent timed out after {retry_attempts} attempts")
+            raise
+        except Exception as e:
+            last_error = e
+            if attempt < retry_attempts - 1:
+                wait_time = 4 * (2**attempt)
+                logger.warning(
+                    f"Agent failed (attempt {attempt + 1}/{retry_attempts}): {e}, "
+                    f"retrying in {wait_time}s..."
+                )
+                await asyncio.sleep(wait_time)
+                continue
+            logger.error(f"Agent failed after {retry_attempts} attempts: {e}")
+            raise
+
+    raise RuntimeError(f"Retry loop exited without result: {last_error}")
+
+
+# Generic schema for arbitrary JSON structured outputs
+class GenericJsonOutput(BaseModel):
+    """Generic container for JSON output - allows any structure."""
+
+    model_config = {"extra": "allow"}  # Allow arbitrary fields
+
+
+async def structured_output_completion(
+    openai_client: AsyncOpenAI,
+    model: str,
+    response_format: dict,  # Legacy parameter - kept for API compatibility
     system_prompt: str,
     user_prompt: str,
-    cache: ResponseCache,  # Expecting a ResponseCache instance
-):
-    """Makes an API call to OpenAI with structured output, retry logic, and caching."""
+    cache: ResponseCache,
+) -> Optional[dict]:
+    """
+    Makes an API call with structured output using agents SDK.
 
-    # Use the passed-in cache instance
-    cached_response = cache.get(f"{system_prompt}:{user_prompt}", model)
-    if cached_response is not None:
-        logger.info(f"Using cached response for model {model}")
-        return cached_response  # Return cached value directly, not as a coroutine
+    Note: response_format parameter is ignored - the agents SDK handles
+    JSON parsing automatically. For typed outputs, use structured_agent_call() directly.
+    """
+    cache_key = f"{system_prompt}:{user_prompt}"
+
+    # Ensure system_prompt includes JSON instruction
+    effective_system_prompt = system_prompt
+    if "JSON object matching the specified schema" not in system_prompt:
+        effective_system_prompt = f"{system_prompt}\nProvide your response as a JSON object matching the specified schema."
 
     try:
-        logger.debug(f"Making API call to OpenAI model {model}")
-
-        # Ensure system_prompt includes JSON instruction if response_format is json_object
-        # This was previously done before calling this function, but good to ensure here too.
-        effective_system_prompt = system_prompt
-        if (
-            response_format.get("type") == "json_object"
-            and "JSON object matching the specified schema" not in system_prompt
-        ):
-            effective_system_prompt = f"{system_prompt}\nProvide your response as a JSON object matching the specified schema."
-
-        # Security: Add timeout to prevent indefinite hanging
-        completion = await openai_client.chat.completions.create(
+        result = await structured_agent_call(
+            openai_client=openai_client,
             model=model,
-            messages=[
-                {"role": "system", "content": effective_system_prompt.strip()},
-                {"role": "user", "content": user_prompt.strip()},
-            ],
-            response_format=response_format,  # Pass the dict directly
-            temperature=0.7,  # Consider making this configurable
-            timeout=120.0,  # 120 second timeout
+            instructions=effective_system_prompt.strip(),
+            user_input=user_prompt.strip(),
+            output_type=GenericJsonOutput,
+            cache=cache,
+            cache_key=cache_key,
+            temperature=0.7,
         )
 
-        if not hasattr(completion, "choices") or not completion.choices:
-            logger.warning(
-                f"No choices returned in OpenAI completion for model {model}."
-            )
-            return None  # Or raise an error
-
-        first_choice = completion.choices[0]
-        if (
-            not hasattr(first_choice, "message")
-            or first_choice.message is None
-            or first_choice.message.content is None
-        ):
-            logger.warning(
-                f"No message content in the first choice for OpenAI model {model}."
-            )
-            return None  # Or raise an error
-
-        # Parse the JSON response
-        result = json.loads(first_choice.message.content)
-
-        # Cache the successful response using the passed-in cache instance
-        cache.set(f"{system_prompt}:{user_prompt}", model, result)
-        logger.debug(f"Successfully received and parsed response from model {model}")
+        # Convert Pydantic model back to dict for backward compatibility
+        if isinstance(result, BaseModel):
+            return result.model_dump()
         return result
 
-    except OpenAIError as e:  # More specific error handling
-        logger.error(f"OpenAI API call failed for model {model}: {e}", exc_info=True)
-        raise  # Re-raise to be handled by the calling function, potentially as gr.Error
-    except json.JSONDecodeError as e:
-        # Accessing first_choice might be an issue if completion itself failed before choices
-        # However, structure assumes choices are checked before this json.loads typically
-        # For safety, check if first_choice.message.content is available
-        response_content_for_log = "<unavailable>"
-        if (
-            "first_choice" in locals()
-            and first_choice.message
-            and first_choice.message.content
-        ):
-            response_content_for_log = first_choice.message.content[:500]
-        logger.error(
-            f"Failed to parse JSON response from model {model}: {e}. Response: {response_content_for_log}",
-            exc_info=True,
-        )
-        raise ValueError(
-            f"Invalid JSON response from AI model {model}."
-        )  # Raise specific error
     except Exception as e:
         logger.error(
-            f"Unexpected error during structured_output_completion for model {model}: {e}",
+            f"structured_output_completion failed for model {model}: {e}",
             exc_info=True,
         )
         raise  # Re-raise unexpected errors
@@ -431,29 +491,24 @@ Generate a few high-quality Anki cards from this content.
         logger.debug(
             f"Attempting to generate cards for {page.url} using model {model}."
         )
-        response_format_param = {"type": "json_object"}
-        # Security: Add timeout to prevent indefinite hanging
-        response_data = await openai_client.chat.completions.create(
+
+        # Use agents SDK for structured output
+        result = await structured_agent_call(
+            openai_client=openai_client,
             model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            response_format=response_format_param,
+            instructions=system_prompt,
+            user_input=user_prompt,
+            output_type=GenericJsonOutput,  # Flexible schema for card generation
             temperature=0.5,
-            timeout=120.0,  # 120 second timeout
+            timeout=120.0,
         )
 
-        if (
-            not response_data.choices
-            or not response_data.choices[0].message
-            or not response_data.choices[0].message.content
-        ):
-            logger.error(f"Invalid or empty response from OpenAI for page {page.url}.")
+        if result is None:
+            logger.error(f"Invalid or empty response from agent for page {page.url}.")
             return []
 
-        cards_json_str = response_data.choices[0].message.content
-        parsed_cards = json.loads(cards_json_str)
+        # Convert Pydantic model to dict for processing
+        parsed_cards = result.model_dump() if isinstance(result, BaseModel) else result
 
         validated_cards: List[Card] = []
 
@@ -471,7 +526,7 @@ Generate a few high-quality Anki cards from this content.
             cards_list_from_json = parsed_cards
         else:
             logger.error(
-                f"LLM response for {page.url} was not a list or valid dict. Response: {cards_json_str[:200]}..."
+                f"LLM response for {page.url} was not a list or valid dict. Response: {str(parsed_cards)[:200]}..."
             )
             return []
 
@@ -546,34 +601,9 @@ Generate a few high-quality Anki cards from this content.
 
         return validated_cards
 
-    except json.JSONDecodeError as e:
-        # cards_json_str might not be defined if json.loads fails early, or if response_data was bad
-        raw_response_content = "<response_content_unavailable>"
-        if "cards_json_str" in locals() and cards_json_str:
-            raw_response_content = cards_json_str[:500]
-        elif (
-            "response_data" in locals()
-            and response_data
-            and response_data.choices
-            and len(response_data.choices) > 0
-            and response_data.choices[0].message
-            and response_data.choices[0].message.content
-        ):
-            raw_response_content = response_data.choices[0].message.content[:500]
-
-        logger.error(
-            f"Failed to decode JSON response from OpenAI for page {page.url}: {e}. Response: {raw_response_content}...",
-            exc_info=True,
-        )
-        return []
-    except OpenAIError as e:
-        logger.error(
-            f"OpenAI API error while processing page {page.url}: {e}", exc_info=True
-        )
-        return []
     except Exception as e:
         logger.error(
-            f"Unexpected error processing page {page.url} with LLM: {e}", exc_info=True
+            f"Error processing page {page.url} with agents SDK: {e}", exc_info=True
         )
         return []
 

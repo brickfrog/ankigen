@@ -30,14 +30,19 @@ logger.info("Agent system loaded successfully")
 # --- Constants --- (Moved from app.py)
 AVAILABLE_MODELS = [
     {
+        "value": "gpt-5.1",
+        "label": "GPT-5.1 (Best Quality)",
+        "description": "Latest model with adaptive reasoning, 400K context",
+    },
+    {
         "value": "gpt-4.1",
-        "label": "GPT-4.1 (Best Quality)",
-        "description": "Highest quality, large context window",
+        "label": "GPT-4.1 (Legacy)",
+        "description": "Previous generation, large context window",
     },
     {
         "value": "gpt-4.1-nano",
-        "label": "GPT-4.1 Nano (Ultra Fast)",
-        "description": "Ultra-fast and cost-effective",
+        "label": "GPT-4.1 Nano (Legacy Fast)",
+        "description": "Previous generation, ultra-fast",
     },
 ]
 

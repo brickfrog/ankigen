@@ -6,6 +6,7 @@ from openai import AsyncOpenAI
 from ankigen_core.logging import logger
 from ankigen_core.context7 import Context7Client
 from ankigen_core.agents.schemas import AutoConfigSchema
+from ankigen_core.llm_interface import structured_agent_call
 
 
 class AutoConfigService:
@@ -70,20 +71,15 @@ Extract:
 Provide a brief rationale for your choices."""
 
         try:
-            response = await openai_client.beta.chat.completions.parse(
-                model="gpt-4.1-nano",  # Use nano for this analysis task
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                response_format=AutoConfigSchema,
+            config = await structured_agent_call(
+                openai_client=openai_client,
+                model="gpt-5.1",
+                instructions=system_prompt,
+                user_input=user_prompt,
+                output_type=AutoConfigSchema,
                 temperature=0.3,  # Lower temperature for more consistent analysis
             )
 
-            if not response.choices or not response.choices[0].message.parsed:
-                raise ValueError("Failed to get valid response from OpenAI")
-
-            config = response.choices[0].message.parsed
             logger.info(
                 f"Subject analysis complete: library='{config.library_search_term}', "
                 f"topics={config.topic_number}, cards/topic={config.cards_per_topic}"
@@ -100,7 +96,7 @@ Provide a brief rationale for your choices."""
                 cards_per_topic=8,
                 learning_preferences="Focus on fundamental concepts and core principles with practical examples",
                 generate_cloze=False,
-                model_choice="gpt-4.1-nano",
+                model_choice="gpt-5.1",
                 subject_type="concepts",
                 scope="medium",
                 rationale="Using default settings due to analysis error",
