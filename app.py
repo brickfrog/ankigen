@@ -159,7 +159,6 @@ def create_ankigen_interface():
                         generation_mode = gr.Radio(
                             choices=[
                                 ("Single Subject", "subject"),
-                                ("Learning Path", "path"),
                                 ("From Text", "text"),
                                 ("From Web", "web"),
                             ],
