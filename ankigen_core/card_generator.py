@@ -52,16 +52,6 @@ GENERATION_MODES = [
         "label": "Single Subject",
         "description": "Generate cards for a specific topic",
     },
-    {
-        "value": "text",
-        "label": "From Text",
-        "description": "Generate cards from provided text",
-    },
-    {
-        "value": "web",
-        "label": "From Web",
-        "description": "Generate cards from a web page URL",
-    },
 ]
 
 # --- Core Functions --- (Moved and adapted from app.py)
@@ -277,97 +267,6 @@ def get_dataframe_columns() -> list[str]:
         "Difficulty",
         "Source_URL",
     ]
-
-
-# This function might be specific to the old crawler flow if AnkiCardData is only from there.
-# If orchestrate_card_generation now also produces something convertible to AnkiCardData, it might be useful.
-# For now, it's used by generate_cards_from_crawled_content.
-def deduplicate_cards(cards: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Deduplicates a list of card dictionaries based on the 'Question' field."""
-    seen_questions = set()
-    unique_cards = []
-    for card_dict in cards:
-        question = card_dict.get("Question")
-        if question is None:  # Should not happen if cards are well-formed
-            logger.warning(f"Card dictionary missing 'Question' key: {card_dict}")
-            unique_cards.append(card_dict)  # Keep it if no question to dedupe on
-            continue
-
-        # Normalize whitespace and case for deduplication
-        normalized_question = " ".join(str(question).strip().lower().split())
-        if normalized_question not in seen_questions:
-            seen_questions.add(normalized_question)
-            unique_cards.append(card_dict)
-        else:
-            logger.info(f"Deduplicated card with question: {question}")
-    return unique_cards
-
-
-# --- Modification for generate_cards_from_crawled_content ---
-
-
-def generate_cards_from_crawled_content(
-    all_cards: List[Card],
-) -> List[Dict[str, Any]]:  # Changed AnkiCardData to Card
-    """
-    Processes a list of Card objects (expected to have plain text fields after generate_cards_batch)
-    and formats them into a list of dictionaries suitable for the DataFrame.
-    """
-    if not all_cards:
-        return []
-
-    data_for_dataframe = []
-    for i, card_obj in enumerate(all_cards):
-        # Extract data, assuming it's already plain text from Card object creation
-        topic = (
-            card_obj.metadata.get("topic", f"Crawled Content - Card {i + 1}")
-            if card_obj.metadata
-            else f"Crawled Content - Card {i + 1}"
-        )
-
-        # Ensure list-based metadata are joined as plain strings for DataFrame
-        prerequisites = (
-            card_obj.metadata.get("prerequisites", []) if card_obj.metadata else []
-        )
-        learning_outcomes = (
-            card_obj.metadata.get("learning_outcomes", []) if card_obj.metadata else []
-        )
-
-        prerequisites_str = strip_html_tags(
-            ", ".join(prerequisites)
-            if isinstance(prerequisites, list)
-            else str(prerequisites)
-        )
-        learning_outcomes_str = strip_html_tags(
-            ", ".join(learning_outcomes)
-            if isinstance(learning_outcomes, list)
-            else str(learning_outcomes)
-        )
-        difficulty_str = strip_html_tags(
-            str(
-                card_obj.metadata.get("difficulty", "N/A")
-                if card_obj.metadata
-                else "N/A"
-            )
-        )
-
-        card_dict = {
-            "Index": str(i + 1),
-            "Topic": strip_html_tags(topic),
-            "Card_Type": strip_html_tags(card_obj.card_type or "basic"),
-            "Question": card_obj.front.question or "",  # Should be plain
-            "Answer": card_obj.back.answer or "",  # Should be plain
-            "Explanation": card_obj.back.explanation or "",  # Should be plain
-            "Example": card_obj.back.example or "",  # Should be plain
-            "Prerequisites": prerequisites_str,
-            "Learning_Outcomes": learning_outcomes_str,
-            "Difficulty": difficulty_str,
-            "Source_URL": strip_html_tags(
-                card_obj.metadata.get("source_url", "") if card_obj.metadata else ""
-            ),
-        }
-        data_for_dataframe.append(card_dict)
-    return data_for_dataframe
 
 
 def generate_token_usage_html(token_usage=None):

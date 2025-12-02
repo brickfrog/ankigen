@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import List, Optional
 
 # Module for Pydantic data models
@@ -60,14 +60,3 @@ class LearningSequence(BaseModel):
     cards: List[CardGeneration]
     suggested_study_order: List[str]
     review_recommendations: List[str]
-
-
-class CrawledPage(BaseModel):
-    url: str
-    html_content: str
-    text_content: str
-    title: Optional[str] = None
-    meta_description: Optional[str] = None
-    meta_keywords: Optional[List[str]] = Field(default_factory=list)
-    crawl_depth: int = 0
-    parent_url: Optional[str] = None

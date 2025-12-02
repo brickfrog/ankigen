@@ -18,11 +18,7 @@ from ankigen_core.exporters import (
 from ankigen_core.llm_interface import (
     OpenAIClientManager,
 )  # structured_output_completion is internal to core modules
-from ankigen_core.ui_logic import (
-    crawl_and_generate,
-    create_crawler_main_mode_elements,
-    update_mode_visibility,
-)
+from ankigen_core.ui_logic import update_mode_visibility
 from ankigen_core.utils import (
     ResponseCache,
     get_logger,
@@ -159,12 +155,11 @@ def create_ankigen_interface():
                         generation_mode = gr.Radio(
                             choices=[
                                 ("Single Subject", "subject"),
-                                ("From Text", "text"),
-                                ("From Web", "web"),
                             ],
                             value="subject",
                             label="Generation Mode",
                             info="Choose how you want to generate content",
+                            visible=False,  # Hidden since only one mode exists
                         )
                         with gr.Group() as subject_mode:
                             subject = gr.Textbox(
@@ -175,41 +170,6 @@ def create_ankigen_interface():
                                 "Auto-fill",
                                 variant="secondary",
                             )
-                        with gr.Group(visible=False) as text_mode:
-                            source_text = gr.Textbox(
-                                label="Source Text",
-                                placeholder="Paste text here...",
-                                lines=15,
-                            )
-                        with gr.Group(visible=False) as web_mode:
-                            # --- BEGIN INTEGRATED CRAWLER UI (Task 16) ---
-                            logger.info(
-                                "Setting up integrated Web Crawler UI elements...",
-                            )
-                            (
-                                crawler_input_ui_elements,  # List of inputs like URL, depth, model, patterns
-                                web_crawl_button,  # Specific button to trigger crawl
-                                web_crawl_progress_bar,
-                                web_crawl_status_textbox,
-                                web_crawl_custom_system_prompt,
-                                web_crawl_custom_user_prompt_template,
-                                web_crawl_use_sitemap_checkbox,
-                                web_crawl_sitemap_url_textbox,
-                            ) = create_crawler_main_mode_elements()
-
-                            # Unpack crawler_input_ui_elements for clarity and use
-                            web_crawl_url_input = crawler_input_ui_elements[0]
-                            web_crawl_max_depth_slider = crawler_input_ui_elements[1]
-                            web_crawl_req_per_sec_slider = crawler_input_ui_elements[2]
-                            web_crawl_model_dropdown = crawler_input_ui_elements[3]
-                            web_crawl_include_patterns_textbox = (
-                                crawler_input_ui_elements[4]
-                            )
-                            web_crawl_exclude_patterns_textbox = (
-                                crawler_input_ui_elements[5]
-                            )
-                            # --- END INTEGRATED CRAWLER UI ---
-
                         api_key_input = gr.Textbox(
                             label="OpenAI API Key",
                             type="password",
@@ -363,29 +323,21 @@ def create_ankigen_interface():
                 inputs=[
                     generation_mode,
                     subject,
-                    source_text,
-                    web_crawl_url_input,
                 ],
                 outputs=[
                     subject_mode,
-                    text_mode,
-                    web_mode,
                     cards_output,
                     subject,
-                    source_text,
-                    web_crawl_url_input,
                     output,
                     total_cards_html,
                 ],
             )
 
-            # Define an async wrapper for the orchestrate_card_generation partial
+            # Define an async wrapper for the orchestrate_card_generation
             async def handle_generate_click(
                 api_key_input_val,
                 subject_val,
                 generation_mode_val,
-                source_text_val,
-                url_input_val,
                 model_choice_val,
                 topic_number_val,
                 cards_per_topic_val,
@@ -393,20 +345,16 @@ def create_ankigen_interface():
                 generate_cloze_checkbox_val,
                 library_name_val,
                 library_topic_val,
-                progress=gr.Progress(track_tqdm=True),  # Added progress tracker
+                progress=gr.Progress(track_tqdm=True),
             ):
-                # Recreate the partial function call, but now it can be awaited
-                # The actual orchestrate_card_generation is already partially applied with client_manager and response_cache
-                # So, we need to get that specific partial object if it's stored, or redefine the partial logic here.
-                # For simplicity and clarity, let's assume direct call to orchestrate_card_generation directly here
                 return await orchestrate_card_generation(
-                    client_manager,  # from global scope
-                    response_cache,  # from global scope
+                    client_manager,
+                    response_cache,
                     api_key_input_val,
                     subject_val,
                     generation_mode_val,
-                    source_text_val,
-                    url_input_val,
+                    "",  # source_text - deprecated
+                    "",  # url_input - deprecated
                     model_choice_val,
                     topic_number_val,
                     cards_per_topic_val,
@@ -415,16 +363,13 @@ def create_ankigen_interface():
                     library_name=library_name_val if library_name_val else None,
                     library_topic=library_topic_val if library_topic_val else None,
                 )
-                # Expect 3-tuple return (dataframe, total_cards_html, token_usage_html)
 
             generate_button.click(
-                fn=handle_generate_click,  # MODIFIED: Use the new async handler
+                fn=handle_generate_click,
                 inputs=[
                     api_key_input,
                     subject,
                     generation_mode,
-                    source_text,
-                    web_crawl_url_input,
                     model_choice,
                     topic_number,
                     cards_per_topic,
@@ -628,150 +573,8 @@ def create_ankigen_interface():
                     preference_prompt,
                     generate_cloze_checkbox,
                     model_choice,
-                    library_accordion,  # Reference to the accordion component
+                    library_accordion,
                 ],
-            )
-
-            async def handle_web_crawl_click(
-                api_key_val: str,
-                url: str,
-                max_depth: int,
-                req_per_sec: float,
-                model: str,  # This is the model for LLM processing of crawled content
-                include_patterns: str,
-                exclude_patterns: str,
-                custom_system_prompt: str,
-                custom_user_prompt_template: str,
-                use_sitemap: bool,
-                sitemap_url: str,
-                progress=gr.Progress(track_tqdm=True),
-            ):
-                progress(0, desc="Initializing web crawl...")
-                yield {
-                    web_crawl_status_textbox: gr.update(
-                        value="Initializing web crawl...",
-                    ),
-                    output: gr.update(value=None),  # Clear main output table
-                    total_cards_html: gr.update(
-                        visible=False,
-                        value="<div><b>Total Cards Generated:</b> <span id='total-cards-count'>0</span></div>",
-                    ),
-                }
-
-                if not api_key_val:
-                    logger.error("API Key is missing for web crawler operation.")
-                    yield {
-                        web_crawl_status_textbox: gr.update(
-                            value="Error: OpenAI API Key is required.",
-                        ),
-                    }
-                    return
-                try:
-                    await client_manager.initialize_client(api_key_val)
-                except Exception as e:
-                    logger.error(
-                        f"Failed to initialize OpenAI client for crawler: {e}",
-                        exc_info=True,
-                    )
-                    yield {
-                        web_crawl_status_textbox: gr.update(
-                            value=f"Error: Client init failed: {e!s}",
-                        ),
-                    }
-                    return
-
-                message, cards_list_of_dicts, _ = await crawl_and_generate(
-                    url=url,
-                    max_depth=max_depth,
-                    crawler_requests_per_second=req_per_sec,
-                    include_patterns=include_patterns,
-                    exclude_patterns=exclude_patterns,
-                    model=model,
-                    export_format_ui="",  # No longer used for direct export from crawl_and_generate
-                    custom_system_prompt=custom_system_prompt,
-                    custom_user_prompt_template=custom_user_prompt_template,
-                    use_sitemap=use_sitemap,
-                    sitemap_url_str=sitemap_url,
-                    client_manager=client_manager,  # Passed from global scope
-                    progress=progress,  # Gradio progress object
-                    status_textbox=web_crawl_status_textbox,  # Specific status textbox for crawl
-                )
-
-                if cards_list_of_dicts:
-                    try:
-                        # Convert List[Dict] to Pandas DataFrame for the main output component
-                        preview_df_value = pd.DataFrame(cards_list_of_dicts)
-                        # Ensure columns match the main output dataframe
-                        # The `generate_cards_from_crawled_content` which produces `cards_list_of_dicts`
-                        # should already format it correctly. If not, mapping is needed here.
-                        # For now, assume it matches the main table structure expected by `gr.Dataframe(value=example_data)`
-
-                        # Check if columns match example_data, if not, reorder/rename or log warning
-                        if not preview_df_value.empty:
-                            expected_cols = example_data.columns.tolist()
-                            # Basic check, might need more robust mapping if structures differ significantly
-                            if not all(
-                                col in preview_df_value.columns for col in expected_cols
-                            ):
-                                logger.warning(
-                                    "Crawled card data columns mismatch main output, attempting to use available data.",
-                                )
-                                # Potentially select only common columns or reindex if necessary
-                                # For now, we'll pass it as is, Gradio might handle extra/missing cols gracefully or error.
-
-                        num_cards = len(preview_df_value)
-                        total_cards_update = f"<div><b>Total Cards Prepared from Crawl:</b> <span id='total-cards-count'>{num_cards}</span></div>"
-
-                        yield {
-                            web_crawl_status_textbox: gr.update(value=message),
-                            output: gr.update(value=preview_df_value),
-                            total_cards_html: gr.update(
-                                visible=True,
-                                value=total_cards_update,
-                            ),
-                        }
-                    except Exception as e:
-                        logger.error(
-                            f"Error converting crawled cards to DataFrame: {e}",
-                            exc_info=True,
-                        )
-                        yield {
-                            web_crawl_status_textbox: gr.update(
-                                value=f"{message} (Error displaying cards: {e!s})",
-                            ),
-                            output: gr.update(value=None),
-                            total_cards_html: gr.update(visible=False),
-                        }
-                else:
-                    yield {
-                        web_crawl_status_textbox: gr.update(
-                            value=message,
-                        ),  # Message from crawl_and_generate (e.g. no cards)
-                        output: gr.update(value=None),
-                        total_cards_html: gr.update(visible=False),
-                    }
-
-            web_crawl_button.click(
-                fn=handle_web_crawl_click,
-                inputs=[
-                    api_key_input,
-                    web_crawl_url_input,
-                    web_crawl_max_depth_slider,
-                    web_crawl_req_per_sec_slider,
-                    web_crawl_model_dropdown,  # Model for LLM processing of content
-                    web_crawl_include_patterns_textbox,
-                    web_crawl_exclude_patterns_textbox,
-                    web_crawl_custom_system_prompt,
-                    web_crawl_custom_user_prompt_template,
-                    web_crawl_use_sitemap_checkbox,
-                    web_crawl_sitemap_url_textbox,
-                ],
-                outputs=[
-                    web_crawl_status_textbox,  # Specific status for crawl
-                    output,  # Main output DataFrame
-                    total_cards_html,  # Main total cards display
-                ],
-                # Removed progress_bar from outputs as it's handled by gr.Progress(track_tqdm=True)
             )
 
     logger.info("AnkiGen Gradio interface creation complete.")

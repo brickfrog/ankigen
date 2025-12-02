@@ -41,24 +41,6 @@ class Context7APIError(APIError):
     pass
 
 
-class CrawlerError(AnkigenError):
-    """Base exception for web crawler errors."""
-
-    pass
-
-
-class URLValidationError(CrawlerError):
-    """Raised when URL validation fails."""
-
-    pass
-
-
-class ContentExtractionError(CrawlerError):
-    """Raised when content extraction from web page fails."""
-
-    pass
-
-
 class ExportError(AnkigenError):
     """Base exception for export-related errors."""
 
