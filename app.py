@@ -141,10 +141,19 @@ def get_recent_logs(logger_name="ankigen") -> str:
         return f"Error reading logs: {e!s}"
 
 
-def create_ankigen_interface():
+def create_ankigen_interface(theme=None, css=None, js=None):
     logger.info("Creating AnkiGen Gradio interface...")
-    # Note: theme, css, and js moved to .launch() for Gradio 6 compatibility
-    with gr.Blocks(title="AnkiGen") as ankigen:
+    # Theme/css/js passed in for Gradio 4.x compatibility (goes in Blocks())
+    # For Gradio 6.x, these are passed to launch() instead
+    blocks_kwargs = {"title": "AnkiGen"}
+    if theme is not None:
+        blocks_kwargs["theme"] = theme
+    if css is not None:
+        blocks_kwargs["css"] = css
+    if js is not None:
+        blocks_kwargs["js"] = js
+
+    with gr.Blocks(**blocks_kwargs) as ankigen:
         with gr.Column(elem_classes="contain"):
             gr.Markdown("# 📚 AnkiGen - Anki Card Generator")
             gr.Markdown("#### Generate Anki flashcards using AI.")
@@ -584,25 +593,41 @@ def create_ankigen_interface():
 # --- Main Execution --- (Runs if script is executed directly)
 if __name__ == "__main__":
     import os
+    from packaging import version
 
     try:
-        ankigen_interface = create_ankigen_interface()
+        # Detect Gradio version for API compatibility
+        gradio_version = version.parse(gr.__version__)
+        is_gradio_6 = gradio_version >= version.parse("5.0.0")
+
+        logger.info(
+            f"Detected Gradio version: {gr.__version__} (v6 API: {is_gradio_6})"
+        )
+
+        if is_gradio_6:
+            # Gradio 6.x: theme/css/js go in launch()
+            ankigen_interface = create_ankigen_interface()
+            launch_kwargs = {
+                "theme": custom_theme,
+                "css": custom_css,
+                "js": js_storage,
+            }
+        else:
+            # Gradio 4.x: theme/css/js go in Blocks()
+            ankigen_interface = create_ankigen_interface(
+                theme=custom_theme,
+                css=custom_css,
+                js=js_storage,
+            )
+            launch_kwargs = {}
+
         logger.info("Launching AnkiGen Gradio interface...")
 
-        # Configure for HuggingFace Spaces vs local development
-        # Note: theme, css, js moved to launch() for Gradio 6 compatibility
-        launch_kwargs = {
-            "theme": custom_theme,
-            "css": custom_css,
-            "js": js_storage,
-        }
         if os.environ.get("SPACE_ID"):  # On HuggingFace Spaces
-            # Let HuggingFace handle all the configuration
             ankigen_interface.queue(default_concurrency_limit=2, max_size=10).launch(
                 **launch_kwargs
             )
         else:  # Local development
-            # Use auto port finding for local dev
             ankigen_interface.queue(default_concurrency_limit=2, max_size=10).launch(
                 server_name="127.0.0.1", share=False, **launch_kwargs
             )

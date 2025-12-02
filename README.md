@@ -5,7 +5,7 @@ app_file: app.py
 requirements: requirements.txt
 python_version: 3.12
 sdk: gradio
-sdk_version: 5.49.1
+sdk_version: 6.0.2
 ---
 
 # AnkiGen - Anki Card Generator
@@ -14,9 +14,8 @@ AnkiGen generates Anki flashcards using OpenAI's GPT models. Available as both a
 
 ## Features
 
-- Generate Anki cards for various subjects or from provided text/URLs
+- Generate Anki cards for various subjects with automatic topic decomposition
 - AI-powered auto-configuration (intelligently determines topics, card counts, and models)
-- Create structured learning paths for complex topics
 - Export to CSV or `.apkg` format with default styling
 - Customizable number of topics and cards per topic
 - Built-in quality review system
@@ -92,11 +91,7 @@ uv run python -m ankigen_core.cli -p "Python Lists" --no-confirm
 
 2. Open your browser to `http://127.0.0.1:7860`
 
-3. Select a generation mode:
-   - Single Subject: Generate cards for a specific topic
-   - Learning Path: Create a structured learning curriculum
-   - From Text: Generate cards from pasted text
-   - From Web: Generate cards from a URL
+3. Enter a subject and optionally click "Auto-fill" to configure settings
 
 4. Configure parameters and click "Generate Cards"
 
@@ -110,7 +105,6 @@ uv run python -m ankigen_core.cli -p "Python Lists" --no-confirm
   - `agents/`: Agent system implementation
   - `card_generator.py`: Card generation orchestration
   - `auto_config.py`: AI-powered auto-configuration
-  - `learning_path.py`: Learning path analysis
   - `exporters.py`: CSV and `.apkg` export functionality
   - `models.py`: Data structures
 - `tests/`: Unit and integration tests
