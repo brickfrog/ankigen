@@ -66,6 +66,16 @@ except (AttributeError, ImportError):
     # Fallback for older gradio versions or when themes are not available
     custom_theme = None
 
+# CSS for the interface (moved to module level for Gradio 6 compatibility)
+custom_css = """
+    #footer {display:none !important}
+    .tall-dataframe {min-height: 500px !important}
+    .contain {max-width: 100% !important; margin: auto;}
+    .output-cards {border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);}
+    .hint-text {font-size: 0.9em; color: #666; margin-top: 4px;}
+    .export-group > .gradio-group { margin-bottom: 0 !important; padding-bottom: 5px !important; }
+"""
+
 # --- Example Data for Initialization ---
 example_data = pd.DataFrame(
     [
@@ -137,48 +147,8 @@ def get_recent_logs(logger_name="ankigen") -> str:
 
 def create_ankigen_interface():
     logger.info("Creating AnkiGen Gradio interface...")
-    with gr.Blocks(
-        theme=custom_theme,
-        title="AnkiGen",
-        css="""
-            #footer {display:none !important}
-            .tall-dataframe {min-height: 500px !important}
-            .contain {max-width: 100% !important; margin: auto;}
-            .output-cards {border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);}
-            .hint-text {font-size: 0.9em; color: #666; margin-top: 4px;}
-            .export-group > .gradio-group { margin-bottom: 0 !important; padding-bottom: 5px !important; }
-
-            /* REMOVING CSS previously intended for DataFrame readability to ensure plain text */
-            /*
-            .explanation-text {
-                background: #f0fdf4;
-                border-left: 3px solid #4ade80;
-                padding: 0.5em;
-                margin-bottom: 0.5em;
-                border-radius: 4px;
-            }
-            .example-text-plain {
-                background: #fff7ed;
-                border-left: 3px solid #f97316;
-                padding: 0.5em;
-                margin-bottom: 0.5em;
-                border-radius: 4px;
-            }
-            pre code {
-                display: block;
-                padding: 0.8em;
-                background: #1e293b;
-                color: #e2e8f0;
-                border-radius: 4px;
-                overflow-x: auto;
-                font-family: 'Fira Code', 'Consolas', monospace;
-                font-size: 0.9em;
-                margin-bottom: 0.5em;
-            }
-            */
-        """,
-        js=js_storage,
-    ) as ankigen:
+    # Note: theme, css, and js moved to .launch() for Gradio 6 compatibility
+    with gr.Blocks(title="AnkiGen") as ankigen:
         with gr.Column(elem_classes="contain"):
             gr.Markdown("# 📚 AnkiGen - Anki Card Generator")
             gr.Markdown("#### Generate Anki flashcards using AI.")
@@ -818,13 +788,21 @@ if __name__ == "__main__":
         logger.info("Launching AnkiGen Gradio interface...")
 
         # Configure for HuggingFace Spaces vs local development
+        # Note: theme, css, js moved to launch() for Gradio 6 compatibility
+        launch_kwargs = {
+            "theme": custom_theme,
+            "css": custom_css,
+            "js": js_storage,
+        }
         if os.environ.get("SPACE_ID"):  # On HuggingFace Spaces
             # Let HuggingFace handle all the configuration
-            ankigen_interface.queue(default_concurrency_limit=2, max_size=10).launch()
+            ankigen_interface.queue(default_concurrency_limit=2, max_size=10).launch(
+                **launch_kwargs
+            )
         else:  # Local development
             # Use auto port finding for local dev
             ankigen_interface.queue(default_concurrency_limit=2, max_size=10).launch(
-                server_name="127.0.0.1", share=False
+                server_name="127.0.0.1", share=False, **launch_kwargs
             )
     except Exception as e:
         logger.critical(f"Failed to launch Gradio interface: {e}", exc_info=True)
