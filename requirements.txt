@@ -89,9 +89,9 @@ fsspec==2025.5.1
     #   huggingface-hub
 genanki==0.13.1
     # via ankigen (pyproject.toml)
-gradio==5.49.1
+gradio==6.0.2
     # via ankigen (pyproject.toml)
-gradio-client==1.13.3
+gradio-client==2.0.1
     # via gradio
 griffe==1.7.3
     # via openai-agents
@@ -183,11 +183,11 @@ numpy==2.3.1
     # via
     #   gradio
     #   pandas
-openai==1.109.1
+openai==2.8.1
     # via
     #   ankigen (pyproject.toml)
     #   openai-agents
-openai-agents==0.3.2
+openai-agents==0.6.1
     # via ankigen (pyproject.toml)
 openapi-core==0.19.5
     # via fastmcp
@@ -226,7 +226,7 @@ py-key-value-shared==0.2.8
     # via py-key-value-aio
 pycparser==2.23
     # via cffi
-pydantic==2.11.9
+pydantic==2.12.4
     # via
     #   ankigen (pyproject.toml)
     #   fastapi
@@ -237,7 +237,7 @@ pydantic==2.11.9
     #   openai-agents
     #   openapi-pydantic
     #   pydantic-settings
-pydantic-core==2.33.2
+pydantic-core==2.41.5
     # via pydantic
 pydantic-settings==2.10.1
     # via mcp
@@ -294,9 +294,7 @@ rpds-py==0.26.0
     # via
     #   jsonschema
     #   referencing
-ruff==0.13.1
-    # via gradio
-safehttpx==0.1.6
+safehttpx==0.1.7
     # via gradio
 secretstorage==3.4.0
     # via keyring
@@ -355,7 +353,7 @@ typing-extensions==4.15.0
     #   starlette
     #   typer
     #   typing-inspection
-typing-inspection==0.4.1
+typing-inspection==0.4.2
     # via
     #   pydantic
     #   pydantic-settings
@@ -370,8 +368,6 @@ uvicorn==0.34.3
     #   gradio
     #   mcp
 websockets==15.0.1
-    # via
-    #   fastmcp
-    #   gradio-client
+    # via fastmcp
 werkzeug==3.1.1
     # via openapi-core

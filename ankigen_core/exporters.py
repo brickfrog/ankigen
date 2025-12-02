@@ -84,7 +84,253 @@ ANKI_CLOZE_MODEL_NAME = "AnkiGen Cloze"
 DEFAULT_BASIC_MODEL_ID = random.randrange(1 << 30, 1 << 31)
 DEFAULT_CLOZE_MODEL_ID = random.randrange(1 << 30, 1 << 31)
 
-# --- Full Model Definitions with CSS (Restored) ---
+# --- Shared CSS with dark mode support ---
+CARD_CSS = """
+    /* CSS Variables - Light Mode (default) */
+    .card {
+        --bg-card: #ffffff;
+        --bg-answer: #f0f9ff;
+        --bg-explanation: #f0fdf4;
+        --bg-example: #fefce8;
+        --bg-back-extra: #eef2ff;
+        --bg-prereq: #f8fafc;
+        --bg-code: #2d2d2d;
+
+        --text-primary: #1a1a1a;
+        --text-secondary: #4b5563;
+        --text-muted: #666666;
+        --text-heading: #1f2937;
+        --text-code: #f8f8f2;
+
+        --accent-blue: #2563eb;
+        --accent-blue-light: #60a5fa;
+        --accent-green: #4ade80;
+        --accent-yellow: #facc15;
+        --accent-indigo: #818cf8;
+        --accent-red: #ef4444;
+
+        --border-light: #e5e7eb;
+        --border-dashed: #cbd5e1;
+
+        --shadow: rgba(0, 0, 0, 0.05);
+    }
+
+    /* Dark Mode Overrides */
+    .nightMode .card,
+    .night_mode .card {
+        --bg-card: #1e1e1e;
+        --bg-answer: #1e293b;
+        --bg-explanation: #14291a;
+        --bg-example: #292518;
+        --bg-back-extra: #1e1b2e;
+        --bg-prereq: #262626;
+        --bg-code: #0d0d0d;
+
+        --text-primary: #e4e4e7;
+        --text-secondary: #a1a1aa;
+        --text-muted: #9ca3af;
+        --text-heading: #f4f4f5;
+        --text-code: #f8f8f2;
+
+        --accent-blue: #60a5fa;
+        --accent-blue-light: #93c5fd;
+        --accent-green: #4ade80;
+        --accent-yellow: #fde047;
+        --accent-indigo: #a5b4fc;
+        --accent-red: #f87171;
+
+        --border-light: #3f3f46;
+        --border-dashed: #52525b;
+
+        --shadow: rgba(0, 0, 0, 0.3);
+    }
+
+    /* Base styles */
+    .card {
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        font-size: 16px;
+        line-height: 1.6;
+        color: var(--text-primary);
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        background: var(--bg-card);
+    }
+
+    @media (max-width: 768px) {
+        .card {
+            font-size: 14px;
+            padding: 15px;
+        }
+    }
+
+    /* Question side */
+    .question-side {
+        position: relative;
+        min-height: 200px;
+    }
+
+    .difficulty-indicator {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+    }
+
+    .difficulty-indicator.beginner { background: var(--accent-green); }
+    .difficulty-indicator.intermediate { background: var(--accent-yellow); }
+    .difficulty-indicator.advanced { background: var(--accent-red); }
+
+    .question {
+        font-size: 1.3em;
+        font-weight: 600;
+        color: var(--accent-blue);
+        margin-bottom: 1.5em;
+    }
+
+    .prerequisites {
+        margin-top: 1em;
+        font-size: 0.9em;
+        color: var(--text-muted);
+    }
+
+    .prerequisites-toggle {
+        color: var(--accent-blue);
+        cursor: pointer;
+        text-decoration: underline;
+    }
+
+    .prerequisites-content {
+        display: none;
+        margin-top: 0.5em;
+        padding: 0.5em;
+        background: var(--bg-prereq);
+        border-radius: 4px;
+    }
+
+    .prerequisites.show .prerequisites-content {
+        display: block;
+    }
+
+    /* Answer side sections */
+    .answer-section,
+    .explanation-section,
+    .example-section,
+    .back-extra-section {
+        margin: 1.5em 0;
+        padding: 1.2em;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px var(--shadow);
+    }
+
+    .answer-section {
+        background: var(--bg-answer);
+        border-left: 4px solid var(--accent-blue);
+    }
+
+    .back-extra-section {
+        background: var(--bg-back-extra);
+        border-left: 4px solid var(--accent-indigo);
+    }
+
+    .explanation-section {
+        background: var(--bg-explanation);
+        border-left: 4px solid var(--accent-green);
+    }
+
+    .example-section {
+        background: var(--bg-example);
+        border-left: 4px solid var(--accent-yellow);
+    }
+
+    .example-section pre {
+        background-color: var(--bg-code);
+        color: var(--text-code);
+        padding: 1em;
+        border-radius: 0.3em;
+        overflow-x: auto;
+        font-family: 'Consolas', 'Monaco', 'Menlo', monospace;
+        font-size: 0.9em;
+        line-height: 1.4;
+    }
+
+    .example-section code {
+        font-family: 'Consolas', 'Monaco', 'Menlo', monospace;
+    }
+
+    .metadata-section {
+        margin-top: 2em;
+        padding-top: 1em;
+        border-top: 1px solid var(--border-light);
+        font-size: 0.9em;
+        color: var(--text-secondary);
+    }
+
+    .metadata-section h3 {
+        font-size: 1em;
+        color: var(--text-heading);
+        margin-bottom: 0.5em;
+    }
+
+    .metadata-section > div {
+        margin-bottom: 0.8em;
+    }
+
+    .source-url a {
+        color: var(--accent-blue);
+        text-decoration: none;
+    }
+    .source-url a:hover {
+        text-decoration: underline;
+    }
+
+    /* Cloze deletion styles */
+    .cloze {
+        font-weight: bold;
+        color: var(--accent-blue);
+    }
+
+    /* General utility */
+    hr {
+        border: none;
+        border-top: 1px dashed var(--border-dashed);
+        margin: 1.5em 0;
+    }
+
+    /* Rich text field styling */
+    .field ul, .field ol {
+        margin-left: 1.5em;
+        padding-left: 0.5em;
+    }
+    .field li {
+        margin-bottom: 0.3em;
+    }
+
+    /* Responsive design */
+    @media (max-width: 640px) {
+        .answer-section,
+        .explanation-section,
+        .example-section,
+        .back-extra-section {
+            padding: 1em;
+            margin: 1em 0;
+        }
+    }
+
+    /* Animations */
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
+    .card {
+        animation: fadeIn 0.3s ease-in-out;
+    }
+"""
+
+# --- Full Model Definitions ---
 
 BASIC_MODEL = genanki.Model(
     DEFAULT_BASIC_MODEL_ID,  # Use the generated ID
@@ -167,188 +413,7 @@ BASIC_MODEL = genanki.Model(
             """,
         }
     ],
-    css="""
-        /* Base styles */
-        .card {
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
-            font-size: 16px;
-            line-height: 1.6;
-            color: #1a1a1a;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            background: #ffffff;
-        }
-
-        @media (max-width: 768px) {
-            .card {
-                font-size: 14px;
-                padding: 15px;
-            }
-        }
-
-        /* Question side */
-        .question-side {
-            position: relative;
-            min-height: 200px;
-        }
-
-        .difficulty-indicator {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-        }
-
-        .difficulty-indicator.beginner { background: #4ade80; }
-        .difficulty-indicator.intermediate { background: #fbbf24; }
-        .difficulty-indicator.advanced { background: #ef4444; }
-
-        .question {
-            font-size: 1.3em;
-            font-weight: 600;
-            color: #2563eb;
-            margin-bottom: 1.5em;
-        }
-
-        .prerequisites {
-            margin-top: 1em;
-            font-size: 0.9em;
-            color: #666;
-        }
-
-        .prerequisites-toggle {
-            color: #2563eb;
-            cursor: pointer;
-            text-decoration: underline;
-        }
-
-        .prerequisites-content {
-            display: none;
-            margin-top: 0.5em;
-            padding: 0.5em;
-            background: #f8fafc;
-            border-radius: 4px;
-        }
-
-        .prerequisites.show .prerequisites-content {
-            display: block;
-        }
-
-        /* Answer side */
-        .answer-section,
-        .explanation-section,
-        .example-section {
-            margin: 1.5em 0;
-            padding: 1.2em;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        }
-
-        .answer-section {
-            background: #f0f9ff;
-            border-left: 4px solid #2563eb;
-        }
-
-        .explanation-section {
-            background: #f0fdf4;
-            border-left: 4px solid #4ade80;
-        }
-
-        .example-section {
-            background: #fefce8; /* Light yellow */
-            border-left: 4px solid #facc15; /* Yellow */
-        }
-        .example-section pre {
-            background-color: #2d2d2d; /* Darker background for code blocks */
-            color: #f8f8f2; /* Light text for contrast */
-            padding: 1em;
-            border-radius: 0.3em;
-            overflow-x: auto; /* Horizontal scroll for long lines */
-            font-family: 'Consolas', 'Monaco', 'Menlo', monospace;
-            font-size: 0.9em;
-            line-height: 1.4;
-        }
-
-        .example-section code {
-             font-family: 'Consolas', 'Monaco', 'Menlo', monospace;
-        }
-
-        .metadata-section {
-            margin-top: 2em;
-            padding-top: 1em;
-            border-top: 1px solid #e5e7eb; /* Light gray border */
-            font-size: 0.9em;
-            color: #4b5563; /* Cool gray */
-        }
-
-        .metadata-section h3 {
-            font-size: 1em;
-            color: #1f2937; /* Darker gray for headings */
-            margin-bottom: 0.5em;
-        }
-
-        .metadata-section > div {
-            margin-bottom: 0.8em;
-        }
-
-        .source-url a {
-            color: #2563eb;
-            text-decoration: none;
-        }
-        .source-url a:hover {
-            text-decoration: underline;
-        }
-
-        /* Styles for cloze deletion cards */
-        .cloze {
-            font-weight: bold;
-            color: blue;
-        }
-        .nightMode .cloze {
-            color: lightblue;
-        }
-
-        /* General utility */
-        hr {
-            border: none;
-            border-top: 1px dashed #cbd5e1; /* Light dashed line */
-            margin: 1.5em 0;
-        }
-
-        /* Rich text field styling (if Anki adds classes for these) */
-        .field ul, .field ol {
-            margin-left: 1.5em;
-            padding-left: 0.5em;
-        }
-        .field li {
-            margin-bottom: 0.3em;
-        }
-
-        /* Responsive design */
-        @media (max-width: 640px) {
-            .answer-section,
-            .explanation-section,
-            .example-section {
-                padding: 1em;
-                margin: 1em 0;
-            }
-        }
-
-        /* Animations */
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-
-        .card {
-            animation: fadeIn 0.3s ease-in-out;
-        }
-    """,
-    # model_type=genanki.Model.BASIC, # This was still incorrect
-    # No model_type needed, defaults to Basic (0)
+    css=CARD_CSS,
 )
 
 CLOZE_MODEL = genanki.Model(
@@ -432,177 +497,8 @@ CLOZE_MODEL = genanki.Model(
             """,
         }
     ],
-    css="""
-        /* Base styles */
-        .card {
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
-            font-size: 16px;
-            line-height: 1.6;
-            color: #1a1a1a;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            background: #ffffff;
-        }
-
-        @media (max-width: 768px) {
-            .card {
-                font-size: 14px;
-                padding: 15px;
-            }
-        }
-
-        /* Question side */
-        .question-side {
-            position: relative;
-            min-height: 200px;
-        }
-
-        .difficulty-indicator {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-        }
-
-        .difficulty-indicator.beginner { background: #4ade80; }
-        .difficulty-indicator.intermediate { background: #fbbf24; }
-        .difficulty-indicator.advanced { background: #ef4444; }
-
-        .question {
-            font-size: 1.3em;
-            font-weight: 600;
-            color: #2563eb;
-            margin-bottom: 1.5em;
-        }
-
-        .prerequisites {
-            margin-top: 1em;
-            font-size: 0.9em;
-            color: #666;
-        }
-
-        .prerequisites-toggle {
-            color: #2563eb;
-            cursor: pointer;
-            text-decoration: underline;
-        }
-
-        .prerequisites-content {
-            display: none;
-            margin-top: 0.5em;
-            padding: 0.5em;
-            background: #f8fafc;
-            border-radius: 4px;
-        }
-
-        .prerequisites.show .prerequisites-content {
-            display: block;
-        }
-
-        /* Answer side */
-        .answer-section,
-        .explanation-section,
-        .example-section {
-            margin: 1.5em 0;
-            padding: 1.2em;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        }
-
-        .answer-section { /* Shared with question for cloze, but can be general */
-            background: #f0f9ff;
-            border-left: 4px solid #2563eb;
-        }
-
-        .back-extra-section {
-            background: #eef2ff; /* A slightly different shade for additional info */
-            border-left: 4px solid #818cf8; /* Indigo variant */
-            margin: 1.5em 0;
-            padding: 1.2em;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        }
-
-        .explanation-section {
-            background: #f0fdf4;
-            border-left: 4px solid #4ade80;
-        }
-
-        .example-section {
-            background: #fefce8; /* Light yellow */
-            border-left: 4px solid #facc15; /* Yellow */
-        }
-        .example-section pre {
-            background-color: #2d2d2d; /* Darker background for code blocks */
-            color: #f8f8f2; /* Light text for contrast */
-            padding: 1em;
-            border-radius: 0.3em;
-            overflow-x: auto; /* Horizontal scroll for long lines */
-            font-family: 'Consolas', 'Monaco', 'Menlo', monospace;
-            font-size: 0.9em;
-            line-height: 1.4;
-        }
-
-        .example-section code {
-             font-family: 'Consolas', 'Monaco', 'Menlo', monospace;
-        }
-
-        .metadata-section {
-            margin-top: 2em;
-            padding-top: 1em;
-            border-top: 1px solid #e5e7eb; /* Light gray border */
-            font-size: 0.9em;
-            color: #4b5563; /* Cool gray */
-        }
-
-        .metadata-section h3 {
-            font-size: 1em;
-            color: #1f2937; /* Darker gray for headings */
-            margin-bottom: 0.5em;
-        }
-
-        .metadata-section > div {
-            margin-bottom: 0.8em;
-        }
-
-        .source-url a {
-            color: #2563eb;
-            text-decoration: none;
-        }
-        .source-url a:hover {
-            text-decoration: underline;
-        }
-
-        /* Styles for cloze deletion cards */
-        .cloze {
-            font-weight: bold;
-            color: blue;
-        }
-        .nightMode .cloze {
-            color: lightblue;
-        }
-
-        /* General utility */
-        hr {
-            border: none;
-            border-top: 1px dashed #cbd5e1; /* Light dashed line */
-            margin: 1.5em 0;
-        }
-
-        /* Rich text field styling (if Anki adds classes for these) */
-        .field ul, .field ol {
-            margin-left: 1.5em;
-            padding-left: 0.5em;
-        }
-        .field li {
-            margin-bottom: 0.3em;
-        }
-    """,
-    # model_type=genanki.Model.CLOZE, # This was still incorrect
-    model_type=1,  # Corrected to use integer 1 for Cloze
+    css=CARD_CSS,
+    model_type=1,  # Cloze model type
 )
 
 
