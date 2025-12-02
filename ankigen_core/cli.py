@@ -13,6 +13,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 from rich.table import Table
 from rich.panel import Panel
 
+from ankigen_core.agents.token_tracker import get_token_tracker
 from ankigen_core.auto_config import AutoConfigService
 from ankigen_core.card_generator import orchestrate_card_generation
 from ankigen_core.exporters import export_dataframe_to_apkg, export_dataframe_to_csv
@@ -327,13 +328,17 @@ def main(
             summary.add_row("Output File:", f"[bold]{exported_path}[/bold]")
             summary.add_row("File Size:", f"{file_size:.1f} KB")
 
-            # Extract token count from HTML if available
-            if "tokens" in token_html.lower():
-                import re
-
-                token_match = re.search(r"(\d+)\s*tokens", token_html)
-                if token_match:
-                    summary.add_row("Tokens Used:", token_match.group(1))
+            # Get token usage from tracker
+            tracker = get_token_tracker()
+            session = tracker.get_session_summary()
+            if session["total_tokens"] > 0:
+                # Calculate totals across all models
+                total_input = sum(u.prompt_tokens for u in tracker.usage_history)
+                total_output = sum(u.completion_tokens for u in tracker.usage_history)
+                summary.add_row(
+                    "Tokens:",
+                    f"{total_input:,} in / {total_output:,} out ({session['total_tokens']:,} total)",
+                )
 
             console.print(
                 Panel(summary, border_style="green", title="Generation Complete")
