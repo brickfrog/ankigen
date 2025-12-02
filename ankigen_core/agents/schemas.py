@@ -155,6 +155,12 @@ class AutoConfigSchema(BaseModel):
     topic_number: int = Field(
         ..., ge=2, le=20, description="Number of topics to generate (2-20)"
     )
+    topics_list: List[str] = Field(
+        ...,
+        min_length=2,
+        max_length=20,
+        description="List of distinct subtopics to cover, ordered by learning progression",
+    )
     cards_per_topic: int = Field(
         ..., ge=2, le=30, description="Number of cards per topic (2-30)"
     )

@@ -52,71 +52,58 @@ class AgentOrchestrator:
         library_name: Optional[str] = None,
         library_topic: Optional[str] = None,
         generate_cloze: bool = False,
+        topics_list: Optional[List[str]] = None,
+        cards_per_topic: int = 8,
     ) -> Tuple[List[Card], Dict[str, Any]]:
-        """Generate cards using the agent system"""
+        """Generate cards using the agent system.
+
+        If topics_list is provided, generates cards for each subtopic separately
+        to ensure comprehensive coverage. Otherwise falls back to single-topic mode.
+        """
         start_time = datetime.now()
 
         try:
             if not self.openai_client:
                 raise ValueError("Agent system not initialized")
 
-            logger.info(f"Starting agent-based card generation: {topic} ({subject})")
-
             # Enhance context with library documentation if requested
             enhanced_context = context or {}
             library_docs = None
 
             if library_name:
-                logger.info(f"Fetching library documentation for: {library_name}")
-                try:
-                    context7_client = Context7Client()
+                library_docs = await self._fetch_library_docs(
+                    library_name, library_topic, num_cards
+                )
+                if library_docs:
+                    enhanced_context["library_documentation"] = library_docs
+                    enhanced_context["library_name"] = library_name
 
-                    # Dynamic token allocation based on card generation needs
-                    # More cards need more thorough documentation
-                    base_tokens = 8000  # Increased base from 5000
-                    if num_cards > 40:
-                        token_limit = 12000  # Large card sets need more context
-                    elif num_cards > 20:
-                        token_limit = 10000  # Medium sets
-                    else:
-                        token_limit = base_tokens  # Small sets
-
-                    # If topic is specified, we can be more focused and use fewer tokens
-                    if library_topic:
-                        token_limit = int(
-                            token_limit * 0.8
-                        )  # Can be more efficient with focused retrieval
-
-                    logger.info(
-                        f"Fetching {token_limit} tokens of documentation"
-                        + (f" for topic: {library_topic}" if library_topic else "")
-                    )
-
-                    library_docs = await context7_client.fetch_library_documentation(
-                        library_name, topic=library_topic, tokens=token_limit
-                    )
-
-                    if library_docs:
-                        enhanced_context["library_documentation"] = library_docs
-                        enhanced_context["library_name"] = library_name
-                        logger.info(
-                            f"Added {len(library_docs)} chars of {library_name} documentation to context"
-                        )
-                    else:
-                        logger.warning(
-                            f"Could not fetch documentation for library: {library_name}"
-                        )
-                except Exception as e:
-                    logger.error(f"Error fetching library documentation: {e}")
-
-            cards = await self._generation_phase(
-                topic=topic,
-                subject=subject,
-                num_cards=num_cards,
-                difficulty=difficulty,
-                context=enhanced_context,
-                generate_cloze=generate_cloze,
-            )
+            # Generate cards - either per-topic or single-topic mode
+            if topics_list and len(topics_list) > 0:
+                logger.info(
+                    f"Starting multi-topic generation: {len(topics_list)} topics, "
+                    f"{cards_per_topic} cards each for '{topic}'"
+                )
+                cards = await self._generate_cards_per_topic(
+                    main_subject=topic,
+                    subject=subject,
+                    topics_list=topics_list,
+                    cards_per_topic=cards_per_topic,
+                    difficulty=difficulty,
+                    context=enhanced_context,
+                    generate_cloze=generate_cloze,
+                )
+            else:
+                # Fallback to single-topic mode
+                logger.info(f"Starting single-topic generation: {topic} ({subject})")
+                cards = await self._generation_phase(
+                    topic=topic,
+                    subject=subject,
+                    num_cards=num_cards,
+                    difficulty=difficulty,
+                    context=enhanced_context,
+                    generate_cloze=generate_cloze,
+                )
 
             # Collect metadata
             metadata = {
@@ -128,6 +115,8 @@ class AgentOrchestrator:
                 "difficulty": difficulty,
                 "library_name": library_name if library_name else None,
                 "library_docs_used": bool(library_docs),
+                "topics_list": topics_list,
+                "multi_topic_mode": topics_list is not None and len(topics_list) > 0,
             }
 
             logger.info(
@@ -138,6 +127,96 @@ class AgentOrchestrator:
         except Exception as e:
             logger.error(f"Agent-based generation failed: {e}")
             raise
+
+    async def _fetch_library_docs(
+        self, library_name: str, library_topic: Optional[str], num_cards: int
+    ) -> Optional[str]:
+        """Fetch library documentation from Context7."""
+        logger.info(f"Fetching library documentation for: {library_name}")
+        try:
+            context7_client = Context7Client()
+
+            # Dynamic token allocation based on card generation needs
+            base_tokens = 8000
+            if num_cards > 40:
+                token_limit = 12000
+            elif num_cards > 20:
+                token_limit = 10000
+            else:
+                token_limit = base_tokens
+
+            if library_topic:
+                token_limit = int(token_limit * 0.8)
+
+            logger.info(
+                f"Fetching {token_limit} tokens of documentation"
+                + (f" for topic: {library_topic}" if library_topic else "")
+            )
+
+            library_docs = await context7_client.fetch_library_documentation(
+                library_name, topic=library_topic, tokens=token_limit
+            )
+
+            if library_docs:
+                logger.info(
+                    f"Added {len(library_docs)} chars of {library_name} documentation to context"
+                )
+                return library_docs
+            else:
+                logger.warning(
+                    f"Could not fetch documentation for library: {library_name}"
+                )
+                return None
+        except Exception as e:
+            logger.error(f"Error fetching library documentation: {e}")
+            return None
+
+    async def _generate_cards_per_topic(
+        self,
+        main_subject: str,
+        subject: str,
+        topics_list: List[str],
+        cards_per_topic: int,
+        difficulty: str,
+        context: Dict[str, Any],
+        generate_cloze: bool,
+    ) -> List[Card]:
+        """Generate cards for each topic in the topics_list."""
+        all_cards: List[Card] = []
+        total_topics = len(topics_list)
+
+        for i, subtopic in enumerate(topics_list):
+            topic_num = i + 1
+            logger.info(
+                f"Generating topic {topic_num}/{total_topics}: {subtopic} "
+                f"({cards_per_topic} cards)"
+            )
+
+            # Add topic context
+            topic_context = {
+                **context,
+                "main_subject": main_subject,
+                "topic_index": topic_num,
+                "total_topics": total_topics,
+                "current_subtopic": subtopic,
+            }
+
+            cards = await self._generation_phase(
+                topic=subtopic,
+                subject=subject,
+                num_cards=cards_per_topic,
+                difficulty=difficulty,
+                context=topic_context,
+                generate_cloze=generate_cloze,
+            )
+
+            all_cards.extend(cards)
+            logger.info(
+                f"Topic {topic_num}/{total_topics} complete: {len(cards)} cards. "
+                f"Total: {len(all_cards)}"
+            )
+
+        return all_cards
 
     async def _generation_phase(
         self,

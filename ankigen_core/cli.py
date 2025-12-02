@@ -56,13 +56,13 @@ async def auto_configure_from_prompt(
         await client_manager.initialize_client(api_key)
         openai_client = client_manager.get_client()
 
-        # Get auto-config
+        # Get auto-config (pass topic count override so LLM decomposes correctly)
         auto_config_service = AutoConfigService()
-        config = await auto_config_service.auto_configure(prompt, openai_client)
+        config = await auto_config_service.auto_configure(
+            prompt, openai_client, target_topic_count=override_topics
+        )
 
-    # Apply overrides
-    if override_topics is not None:
-        config["topic_number"] = override_topics
+    # Apply remaining overrides (topics already handled in auto_configure)
     if override_cards is not None:
         config["cards_per_topic"] = override_cards
     if override_model is not None:
@@ -87,6 +87,17 @@ async def auto_configure_from_prompt(
         table.add_row("Library", config.get("library_name"))
     if config.get("library_topic"):
         table.add_row("Library Topic", config.get("library_topic"))
+
+    # Display discovered topics
+    if config.get("topics_list"):
+        topics = config["topics_list"]
+        # Show first few topics, indicate if there are more
+        if len(topics) <= 4:
+            topics_str = ", ".join(topics)
+        else:
+            topics_str = ", ".join(topics[:3]) + f", ... (+{len(topics) - 3} more)"
+        table.add_row("Subtopics", topics_str)
+
     if config.get("preference_prompt"):
         table.add_row(
             "Learning Focus", config.get("preference_prompt", "")[:50] + "..."
@@ -143,6 +154,7 @@ async def generate_cards_from_config(
             library_topic=config.get("library_topic")
             if config.get("library_topic")
             else None,
+            topics_list=config.get("topics_list"),
         )
 
         progress.update(task, completed=100)

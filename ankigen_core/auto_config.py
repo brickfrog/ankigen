@@ -16,11 +16,30 @@ class AutoConfigService:
         self.context7_client = Context7Client()
 
     async def analyze_subject(
-        self, subject: str, openai_client: AsyncOpenAI
+        self,
+        subject: str,
+        openai_client: AsyncOpenAI,
+        target_topic_count: int | None = None,
     ) -> AutoConfigSchema:
-        """Analyze a subject string and return configuration settings"""
+        """Analyze a subject string and return configuration settings.
 
-        system_prompt = """You are an educational content analyzer specializing in spaced repetition learning. Analyze the given subject and determine flashcard generation settings that focus on ESSENTIAL concepts.
+        Args:
+            subject: The subject to analyze
+            openai_client: OpenAI client for LLM calls
+            target_topic_count: If provided, forces exactly this many topics in decomposition
+        """
+
+        # Build topic count instruction if override provided
+        topic_count_instruction = ""
+        if target_topic_count is not None:
+            topic_count_instruction = f"""
+IMPORTANT OVERRIDE: The user has requested exactly {target_topic_count} topics.
+You MUST set topic_number to {target_topic_count} and provide exactly {target_topic_count} items in topics_list.
+Choose the {target_topic_count} most important/foundational subtopics for this subject.
+"""
+
+        system_prompt = f"""You are an educational content analyzer specializing in spaced repetition learning. Analyze the given subject and determine flashcard generation settings that focus on ESSENTIAL concepts.
+{topic_count_instruction}
 
 CRITICAL PRINCIPLE: Quality over quantity. Focus on fundamental concepts that unlock understanding, not trivial facts.
 
@@ -32,14 +51,24 @@ Consider:
    - "Docker networking" → documentation_focus: "networking, network drivers, container communication"
 3. Identify the scope: narrow (specific feature), medium (several related topics), broad (full overview)
 4. Determine content type: concepts (theory/understanding), syntax (code/commands), api (library usage), practical (hands-on skills)
-5. Suggest number of topics and cards - aim for thorough learning (30-60 total cards minimum)
+5. TOPIC DECOMPOSITION: Break down the subject into distinct subtopics that together provide comprehensive coverage
 6. Recommend cloze cards for syntax/code, basic cards for concepts
 7. Choose model based on complexity: gpt-4.1 for complex topics, gpt-4.1-nano for basic/simple
+
+TOPIC DECOMPOSITION (topics_list):
+You MUST provide a topics_list - a list of distinct subtopics that together cover the subject comprehensively.
+- Each topic should be specific and non-overlapping
+- Order topics from foundational to advanced (learning progression)
+- The number of topics should match topic_number
+
+Examples:
+- "React Hooks" → topics_list: ["useState fundamentals", "useEffect and lifecycle", "useRef and useContext", "custom hooks patterns", "performance with useMemo/useCallback", "testing hooks"]
+- "Docker basics" → topics_list: ["containers vs VMs", "images and Dockerfile", "container lifecycle", "volumes and persistence", "networking fundamentals", "docker-compose basics"]
+- "Machine Learning" → topics_list: ["supervised vs unsupervised", "regression models", "classification models", "model evaluation metrics", "overfitting and regularization", "feature engineering", "cross-validation"]
 
 IMPORTANT - Focus on HIGH-VALUE topics:
 - GOOD topics: Core concepts, fundamental principles, mental models, design patterns, key abstractions
 - AVOID topics: Trivial commands (like "docker ps"), basic syntax that's easily googled, minor API details
-- Example: For Docker, focus on "container lifecycle", "image layers", "networking models" NOT "list of docker commands"
 
 Guidelines for settings (MINIMUM 30 cards total):
 - Narrow/specific scope: 4-5 essential topics with 8-10 cards each (32-50 cards)
@@ -52,12 +81,6 @@ Learning preference suggestions:
 - For basics: "Focus on fundamental concepts and mental models that form the foundation"
 - For practical: "Emphasize core patterns and principles with real-world applications"
 - For theory: "Build deep conceptual understanding with progressive complexity"
-
-Documentation focus examples (be specific and thorough):
-- "Basic Pandas Dataframe" → "dataframe creation, indexing, selection, basic operations, data types"
-- "React hooks" → "useState, useEffect, custom hooks, hook rules, common patterns"
-- "Docker basics" → "containers, images, Dockerfile, volumes, basic networking"
-- "TypeScript types" → "generics, conditional types, mapped types, utility types, type inference"
 
 Return a JSON object matching the AutoConfigSchema."""
 
@@ -89,10 +112,19 @@ Provide a brief rationale for your choices."""
         except Exception as e:
             logger.error(f"Failed to analyze subject: {e}")
             # Return sensible defaults on error (still aim for good card count)
+            # Use the subject as a single topic as fallback
             return AutoConfigSchema(
                 library_search_term="",
                 documentation_focus=None,
                 topic_number=6,
+                topics_list=[
+                    f"{subject} - fundamentals",
+                    f"{subject} - core concepts",
+                    f"{subject} - practical applications",
+                    f"{subject} - common patterns",
+                    f"{subject} - best practices",
+                    f"{subject} - advanced topics",
+                ],
                 cards_per_topic=8,
                 learning_preferences="Focus on fundamental concepts and core principles with practical examples",
                 generate_cloze=False,
@@ -103,13 +135,21 @@ Provide a brief rationale for your choices."""
             )
 
     async def auto_configure(
-        self, subject: str, openai_client: AsyncOpenAI
+        self,
+        subject: str,
+        openai_client: AsyncOpenAI,
+        target_topic_count: int | None = None,
     ) -> Dict[str, Any]:
         """
         Complete auto-configuration pipeline:
         1. Analyze subject with AI
         2. Search Context7 for library if detected
         3. Return complete configuration for UI
+
+        Args:
+            subject: The subject to analyze
+            openai_client: OpenAI client for LLM calls
+            target_topic_count: If provided, forces exactly this many topics
         """
 
         if not subject or not subject.strip():
@@ -119,7 +159,9 @@ Provide a brief rationale for your choices."""
         logger.info(f"Starting auto-configuration for subject: '{subject}'")
 
         # Step 1: Analyze the subject
-        config = await self.analyze_subject(subject, openai_client)
+        config = await self.analyze_subject(
+            subject, openai_client, target_topic_count=target_topic_count
+        )
 
         # Step 2: Search Context7 for library if one was detected
         library_id = None
@@ -145,6 +187,7 @@ Provide a brief rationale for your choices."""
             "library_name": config.library_search_term if library_id else "",
             "library_topic": config.documentation_focus or "",
             "topic_number": config.topic_number,
+            "topics_list": config.topics_list,
             "cards_per_topic": config.cards_per_topic,
             "preference_prompt": config.learning_preferences,
             "generate_cloze_checkbox": config.generate_cloze,

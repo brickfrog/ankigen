@@ -140,6 +140,7 @@ async def orchestrate_card_generation(
     use_llm_judge: bool = False,
     library_name: str = None,
     library_topic: str = None,
+    topics_list: List[str] = None,
 ):
     """Orchestrates the card generation process based on UI inputs."""
     logger.info(f"Starting card generation orchestration in {generation_mode} mode")
@@ -175,6 +176,8 @@ async def orchestrate_card_generation(
             library_name=library_name,
             library_topic=library_topic,
             generate_cloze=generate_cloze,
+            topics_list=topics_list,
+            cards_per_topic=cards_per_topic,
         )
 
         token_usage_html = _get_token_usage_html(token_tracker)
