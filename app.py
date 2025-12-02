@@ -223,9 +223,6 @@ def create_ankigen_interface(theme=None, css=None, js=None):
                                 info="Select AI model for generation",
                                 allow_custom_value=True,
                             )
-                            _model_info = gr.Markdown(
-                                "**gpt-4.1**: Best quality | **gpt-4.1-nano**: Faster/Cheaper",
-                            )
                             topic_number = gr.Slider(
                                 label="Number of Topics",
                                 minimum=2,
