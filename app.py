@@ -15,7 +15,6 @@ from ankigen_core.exporters import (
     export_dataframe_to_apkg,
     export_dataframe_to_csv,
 )  # Anki models (BASIC_MODEL, CLOZE_MODEL) are internal to exporters
-from ankigen_core.learning_path import analyze_learning_path
 from ankigen_core.llm_interface import (
     OpenAIClientManager,
 )  # structured_output_completion is internal to core modules
@@ -23,7 +22,6 @@ from ankigen_core.ui_logic import (
     crawl_and_generate,
     create_crawler_main_mode_elements,
     update_mode_visibility,
-    use_selected_subjects,
 )
 from ankigen_core.utils import (
     ResponseCache,
@@ -208,16 +206,6 @@ def create_ankigen_interface():
                                 "Auto-fill",
                                 variant="secondary",
                             )
-                        with gr.Group(visible=False) as path_mode:
-                            description = gr.Textbox(
-                                label="Learning Goal",
-                                placeholder="Paste a job description...",
-                                lines=5,
-                            )
-                            analyze_button = gr.Button(
-                                "Analyze & Break Down",
-                                variant="secondary",
-                            )
                         with gr.Group(visible=False) as text_mode:
                             source_text = gr.Textbox(
                                 label="Source Text",
@@ -329,21 +317,6 @@ def create_ankigen_interface():
 
             generate_button = gr.Button("Generate Cards", variant="primary")
 
-            with gr.Group(visible=False) as path_results:
-                gr.Markdown("### Learning Path Analysis")
-                subjects_list = gr.Dataframe(
-                    headers=["Subject", "Prerequisites", "Time Estimate"],
-                    label="Recommended Subjects",
-                    interactive=False,
-                )
-                learning_order = gr.Markdown("### Recommended Learning Order")
-                projects = gr.Markdown("### Suggested Projects")
-                use_subjects = gr.Button("Use These Subjects ℹ️", variant="primary")
-                gr.Markdown(
-                    "*Click to copy subjects to main input*",
-                    elem_classes="hint-text",
-                )
-
             with gr.Group() as cards_output:
                 gr.Markdown("### Generated Cards")
                 with gr.Accordion("Output Format", open=False):
@@ -421,93 +394,18 @@ def create_ankigen_interface():
                 inputs=[
                     generation_mode,
                     subject,
-                    description,
                     source_text,
                     web_crawl_url_input,
                 ],
                 outputs=[
                     subject_mode,
-                    path_mode,
                     text_mode,
                     web_mode,
-                    path_results,
                     cards_output,
                     subject,
-                    description,
                     source_text,
                     web_crawl_url_input,
                     output,
-                    subjects_list,
-                    learning_order,
-                    projects,
-                    total_cards_html,
-                ],
-            )
-
-            # Define an async wrapper for the analyze_learning_path partial
-            async def handle_analyze_click(
-                api_key_val,
-                description_val,
-                model_choice_val,
-                progress=gr.Progress(track_tqdm=True),  # Added progress tracker
-            ):
-                try:
-                    # Call analyze_learning_path directly, as client_manager and response_cache are in scope
-                    return await analyze_learning_path(
-                        client_manager,  # from global scope
-                        response_cache,  # from global scope
-                        api_key_val,
-                        description_val,
-                        model_choice_val,
-                    )
-                except gr.Error as e:  # Catch the specific Gradio error
-                    logger.error(f"Learning path analysis failed: {e}", exc_info=True)
-                    # Re-raise the error so Gradio displays it to the user
-                    # And return appropriate empty updates for the outputs
-                    # to prevent a subsequent Gradio error about mismatched return values.
-                    gr.Error(str(e))  # This will be shown in the UI.
-                    empty_subjects_df = pd.DataFrame(
-                        columns=["Subject", "Prerequisites", "Time Estimate"],
-                    )
-                    return (
-                        gr.update(
-                            value=empty_subjects_df,
-                        ),  # For subjects_list (DataFrame)
-                        gr.update(value=""),  # For learning_order (Markdown)
-                        gr.update(value=""),  # For projects (Markdown)
-                    )
-
-            analyze_button.click(
-                fn=handle_analyze_click,  # MODIFIED: Use the new async handler
-                inputs=[
-                    api_key_input,
-                    description,
-                    model_choice,
-                ],
-                outputs=[subjects_list, learning_order, projects],
-            )
-
-            use_subjects.click(
-                fn=use_selected_subjects,
-                inputs=[subjects_list],
-                outputs=[
-                    generation_mode,
-                    subject_mode,
-                    path_mode,
-                    text_mode,
-                    web_mode,
-                    path_results,
-                    cards_output,
-                    subject,
-                    description,
-                    source_text,
-                    web_crawl_url_input,
-                    topic_number,
-                    preference_prompt,
-                    output,
-                    subjects_list,
-                    learning_order,
-                    projects,
                     total_cards_html,
                 ],
             )

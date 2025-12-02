@@ -1,7 +1,7 @@
 # Module for functions that build or manage UI sections/logic
 
 import gradio as gr
-import pandas as pd  # Needed for use_selected_subjects type hinting
+import pandas as pd
 from typing import (
     Callable,
     List,
@@ -51,23 +51,18 @@ crawler_ui_logger = get_logger()  # Keep this definition
 def update_mode_visibility(
     mode: str,
     current_subject: str,
-    current_description: str,
     current_text: str,
     current_url: str,
 ):
     """Updates visibility and values of UI elements based on generation mode."""
     is_subject = mode == "subject"
-    is_path = mode == "path"
     is_text = mode == "text"
     is_web = mode == "web"
 
     # Determine value persistence or clearing
     subject_val = current_subject if is_subject else ""
-    description_val = current_description if is_path else ""
     text_val = current_text if is_text else ""
     url_val = current_url if is_web else ""
-
-    cards_output_visible = is_subject or is_text or is_web
 
     # Define standard columns for empty DataFrames
     main_output_df_columns = [
@@ -82,173 +77,22 @@ def update_mode_visibility(
         "Learning_Outcomes",
         "Difficulty",
     ]
-    subjects_list_df_columns = ["Subject", "Prerequisites", "Time Estimate"]
 
     return (
         gr.update(visible=is_subject),  # 1 subject_mode (Group)
-        gr.update(visible=is_path),  # 2 path_mode (Group)
-        gr.update(visible=is_text),  # 3 text_mode (Group)
-        gr.update(visible=is_web),  # 4 web_mode (Group for crawler UI)
-        gr.update(visible=is_path),  # 5 path_results (Group)
-        gr.update(
-            visible=cards_output_visible
-        ),  # 6 cards_output (Group for main table)
-        gr.update(value=subject_val),  # Now 7th item (was 8th)
-        gr.update(value=description_val),  # Now 8th item (was 9th)
-        gr.update(value=text_val),  # Now 9th item (was 10th)
-        gr.update(value=url_val),  # Now 10th item (was 11th)
+        gr.update(visible=is_text),  # 2 text_mode (Group)
+        gr.update(visible=is_web),  # 3 web_mode (Group for crawler UI)
+        gr.update(visible=True),  # 4 cards_output (always visible now)
+        gr.update(value=subject_val),  # 5 subject
+        gr.update(value=text_val),  # 6 source_text
+        gr.update(value=url_val),  # 7 web_crawl_url_input
         gr.update(
             value=pd.DataFrame(columns=main_output_df_columns)
-        ),  # Now 11th item (was 12th)
-        gr.update(
-            value=pd.DataFrame(columns=subjects_list_df_columns)
-        ),  # Now 12th item (was 13th)
-        gr.update(value=""),  # Now 13th item (was 14th)
-        gr.update(value=""),  # Now 14th item (was 15th)
+        ),  # 8 output (DataFrame)
         gr.update(
             value="<div><b>Total Cards Generated:</b> <span id='total-cards-count'>0</span></div>",
             visible=False,
-        ),  # Now 15th item (was 16th)
-    )
-
-
-def use_selected_subjects(subjects_df: pd.DataFrame | None):
-    """Updates UI to use subjects from learning path analysis."""
-    if subjects_df is None or subjects_df.empty:
-        gr.Warning("No subjects available to copy from Learning Path analysis.")
-        # Return updates that change nothing for all 18 outputs
-        return (
-            gr.update(),  # 1 generation_mode
-            gr.update(),  # 2 subject_mode
-            gr.update(),  # 3 path_mode
-            gr.update(),  # 4 text_mode
-            gr.update(),  # 5 web_mode
-            gr.update(),  # 6 path_results
-            gr.update(),  # 7 cards_output
-            gr.update(),  # 8 subject
-            gr.update(),  # 9 description
-            gr.update(),  # 10 source_text
-            gr.update(),  # 11 web_crawl_url_input
-            gr.update(),  # 12 topic_number
-            gr.update(),  # 13 preference_prompt
-            gr.update(
-                value=pd.DataFrame(
-                    columns=[
-                        "Index",
-                        "Topic",
-                        "Card_Type",
-                        "Question",
-                        "Answer",
-                        "Explanation",
-                        "Example",
-                        "Prerequisites",
-                        "Learning_Outcomes",
-                        "Difficulty",
-                    ]
-                )
-            ),  # 14 output (DataFrame)
-            gr.update(
-                value=pd.DataFrame(
-                    columns=["Subject", "Prerequisites", "Time Estimate"]
-                )
-            ),  # 15 subjects_list (DataFrame)
-            gr.update(),  # 16 learning_order
-            gr.update(),  # 17 projects
-            gr.update(visible=False),  # 18 total_cards_html
-        )
-
-    try:
-        subjects = subjects_df["Subject"].tolist()
-        combined_subject = ", ".join(subjects)
-        # Ensure suggested_topics is an int, Gradio sliders expect int/float for value
-        suggested_topics = int(min(len(subjects) + 1, 20))
-    except KeyError:
-        gr.Error("Learning path analysis result is missing the 'Subject' column.")
-        # Return no-change updates for all 18 outputs
-        return (
-            gr.update(),  # 1 generation_mode
-            gr.update(),  # 2 subject_mode
-            gr.update(),  # 3 path_mode
-            gr.update(),  # 4 text_mode
-            gr.update(),  # 5 web_mode
-            gr.update(),  # 6 path_results
-            gr.update(),  # 7 cards_output
-            gr.update(),  # 8 subject
-            gr.update(),  # 9 description
-            gr.update(),  # 10 source_text
-            gr.update(),  # 11 web_crawl_url_input
-            gr.update(),  # 12 topic_number
-            gr.update(),  # 13 preference_prompt
-            gr.update(
-                value=pd.DataFrame(
-                    columns=[
-                        "Index",
-                        "Topic",
-                        "Card_Type",
-                        "Question",
-                        "Answer",
-                        "Explanation",
-                        "Example",
-                        "Prerequisites",
-                        "Learning_Outcomes",
-                        "Difficulty",
-                    ]
-                )
-            ),  # 14 output (DataFrame)
-            gr.update(
-                value=pd.DataFrame(
-                    columns=["Subject", "Prerequisites", "Time Estimate"]
-                )
-            ),  # 15 subjects_list (DataFrame)
-            gr.update(),  # 16 learning_order
-            gr.update(),  # 17 projects
-            gr.update(visible=False),  # 18 total_cards_html
-        )
-
-    # Corresponds to outputs in app.py for use_subjects.click:
-    # [generation_mode, subject_mode, path_mode, text_mode, web_mode, path_results, cards_output,
-    #  subject, description, source_text, web_crawl_url_input, topic_number, preference_prompt,
-    #  output, subjects_list, learning_order, projects, total_cards_html]
-    return (
-        gr.update(value="subject"),  # 1 generation_mode (Radio)
-        gr.update(visible=True),  # 2 subject_mode (Group)
-        gr.update(visible=False),  # 3 path_mode (Group)
-        gr.update(visible=False),  # 4 text_mode (Group)
-        gr.update(visible=False),  # 5 web_mode (Group)
-        gr.update(visible=False),  # 6 path_results (Group)
-        gr.update(visible=True),  # 7 cards_output (Group)
-        gr.update(value=combined_subject),  # 8 subject (Textbox)
-        gr.update(value=""),  # 9 description (Textbox)
-        gr.update(value=""),  # 10 source_text (Textbox)
-        gr.update(value=""),  # 11 web_crawl_url_input (Textbox)
-        gr.update(value=suggested_topics),  # 12 topic_number (Slider)
-        gr.update(
-            value="Focus on connections between these subjects and their practical applications."
-        ),  # 13 preference_prompt (Textbox)
-        gr.update(
-            value=pd.DataFrame(
-                columns=[
-                    "Index",
-                    "Topic",
-                    "Card_Type",
-                    "Question",
-                    "Answer",
-                    "Explanation",
-                    "Example",
-                    "Prerequisites",
-                    "Learning_Outcomes",
-                    "Difficulty",
-                ]
-            )
-        ),  # 14 output (DataFrame) - Clear it
-        gr.update(
-            value=subjects_df
-        ),  # 15 subjects_list (DataFrame) - Keep the value that triggered this
-        gr.update(
-            value=""
-        ),  # 16 learning_order (Markdown) - Clear it or decide to keep
-        gr.update(value=""),  # 17 projects (Markdown) - Clear it or decide to keep
-        gr.update(visible=False),  # 18 total_cards_html (HTML)
+        ),  # 9 total_cards_html
     )
 
 

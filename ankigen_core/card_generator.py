@@ -53,11 +53,6 @@ GENERATION_MODES = [
         "description": "Generate cards for a specific topic",
     },
     {
-        "value": "path",
-        "label": "Learning Path",
-        "description": "Break down a job description or learning goal into subjects",
-    },
-    {
         "value": "text",
         "label": "From Text",
         "description": "Generate cards from provided text",
