@@ -173,7 +173,7 @@ class AutoConfigSchema(BaseModel):
     )
     model_choice: str = Field(
         ...,
-        description="Recommended model: 'gpt-5.1' for all tasks (uses reasoning_effort=none for speed)",
+        description="Recommended model: 'gpt-5.2-auto', 'gpt-5.2-instant', or 'gpt-5.2-thinking'",
     )
 
     # Analysis metadata

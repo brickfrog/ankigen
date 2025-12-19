@@ -77,7 +77,7 @@ uv run python -m ankigen_core.cli -p "Python Lists" --no-confirm
 - `-p, --prompt`: Subject/topic (required)
 - `--topics`: Number of topics (auto-detected if omitted)
 - `--cards-per-topic`: Cards per topic (auto-detected if omitted)
-- `--model`: Model choice (`gpt-4.1` or `gpt-4.1-nano`)
+- `--model`: Model choice (`gpt-5.2-auto`, `gpt-5.2-instant`, or `gpt-5.2-thinking`)
 - `-o, --output`: Output file path
 - `--format`: Export format (`apkg` or `csv`)
 - `--no-confirm`: Skip confirmation prompt

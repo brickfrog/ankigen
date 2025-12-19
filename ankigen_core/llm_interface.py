@@ -129,7 +129,7 @@ async def structured_agent_call(
 
     Args:
         openai_client: AsyncOpenAI client instance
-        model: Model name (e.g., "gpt-5.1", "gpt-5.1-chat-latest")
+        model: Model name (e.g., "gpt-5.2", "gpt-5.2-chat-latest")
         instructions: System instructions for the agent
         user_input: User prompt/input
         output_type: Pydantic model class for structured output
@@ -155,10 +155,10 @@ async def structured_agent_call(
     # 2. Set up the OpenAI client for agents SDK
     set_default_openai_client(openai_client, use_for_tracing=False)
 
-    # 3. Build model settings with GPT-5.1 reasoning support
+    # 3. Build model settings with GPT-5.x reasoning support
     model_settings_kwargs: dict = {"temperature": temperature}
 
-    # GPT-5.1 (not chat-latest) supports reasoning_effort
+    # GPT-5.x (not chat-latest) supports reasoning_effort
     if model.startswith("gpt-5") and "chat-latest" not in model:
         from openai.types.shared import Reasoning
 

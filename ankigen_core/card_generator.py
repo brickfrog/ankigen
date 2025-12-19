@@ -30,19 +30,19 @@ logger.info("Agent system loaded successfully")
 # --- Constants --- (Moved from app.py)
 AVAILABLE_MODELS = [
     {
-        "value": "gpt-5.1",
-        "label": "GPT-5.1 (Best Quality)",
-        "description": "Latest model with adaptive reasoning, 400K context",
+        "value": "gpt-5.2-auto",
+        "label": "GPT-5.2 Auto",
+        "description": "Adaptive reasoning",
     },
     {
-        "value": "gpt-4.1",
-        "label": "GPT-4.1 (Legacy)",
-        "description": "Previous generation, large context window",
+        "value": "gpt-5.2-instant",
+        "label": "GPT-5.2 Instant",
+        "description": "Fast, minimal reasoning",
     },
     {
-        "value": "gpt-4.1-nano",
-        "label": "GPT-4.1 Nano (Legacy Fast)",
-        "description": "Previous generation, ultra-fast",
+        "value": "gpt-5.2-thinking",
+        "label": "GPT-5.2 Thinking",
+        "description": "Higher reasoning effort",
     },
 ]
 
@@ -58,6 +58,32 @@ GENERATION_MODES = [
 
 
 # Legacy functions removed - all card generation now handled by agent system
+
+
+def _parse_model_selection(model_selection: str) -> tuple[str, str | None]:
+    """Parse model selection into model name and reasoning effort."""
+    if not model_selection:
+        return "gpt-5.2", None
+
+    normalized = model_selection.strip().lower()
+    if normalized == "gpt-5.2-auto":
+        return "gpt-5.2", None
+    if normalized == "gpt-5.2-instant":
+        return "gpt-5.2", "none"
+    if normalized == "gpt-5.2-thinking":
+        return "gpt-5.2", "high"
+
+    if "gpt-5.2" in normalized:
+        if "instant" in normalized:
+            return "gpt-5.2", "none"
+        if "thinking" in normalized:
+            return "gpt-5.2", "high"
+        if "auto" in normalized:
+            return "gpt-5.2", None
+        return "gpt-5.2", None
+
+    # Fallback for direct model names
+    return model_selection, None
 
 
 def _map_generation_mode_to_subject(generation_mode: str, subject: str) -> str:
@@ -145,8 +171,13 @@ async def orchestrate_card_generation(
         token_tracker = get_token_tracker()
         orchestrator = AgentOrchestrator(client_manager)
 
-        logger.info(f"Using {model_name} for SubjectExpertAgent")
-        await orchestrator.initialize(api_key_input, {"subject_expert": model_name})
+        model_name_resolved, reasoning_effort = _parse_model_selection(model_name)
+        logger.info(f"Using {model_name_resolved} for SubjectExpertAgent")
+        await orchestrator.initialize(
+            api_key_input,
+            {"subject_expert": model_name_resolved},
+            {"subject_expert": reasoning_effort},
+        )
 
         agent_subject = _map_generation_mode_to_subject(generation_mode, subject)
         context = _build_generation_context(generation_mode, source_text)

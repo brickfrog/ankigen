@@ -21,7 +21,12 @@ class AgentOrchestrator:
 
         self.subject_expert = None
 
-    async def initialize(self, api_key: str, model_overrides: Dict[str, str] = None):
+    async def initialize(
+        self,
+        api_key: str,
+        model_overrides: Dict[str, str] = None,
+        reasoning_overrides: Dict[str, Optional[str]] = None,
+    ):
         """Initialize the agent system"""
         try:
             # Initialize OpenAI client
@@ -29,12 +34,24 @@ class AgentOrchestrator:
             self.openai_client = self.client_manager.get_client()
 
             # Set up model overrides if provided
+            config_manager = None
             if model_overrides:
                 from ankigen_core.agents.config import get_config_manager
 
                 config_manager = get_config_manager()
                 config_manager.update_models(model_overrides)
                 logger.info(f"Applied model overrides: {model_overrides}")
+
+            if reasoning_overrides:
+                if config_manager is None:
+                    from ankigen_core.agents.config import get_config_manager
+
+                    config_manager = get_config_manager()
+                for agent_name, effort in reasoning_overrides.items():
+                    config_manager.update_agent_config(
+                        agent_name, reasoning_effort=effort
+                    )
+                logger.info(f"Applied reasoning overrides: {reasoning_overrides}")
 
             logger.info("Agent system initialized successfully (simplified pipeline)")
 

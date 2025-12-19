@@ -212,7 +212,7 @@ def create_ankigen_interface(theme=None, css=None, js=None):
                                         (
                                             m["value"]
                                             for m in AVAILABLE_MODELS
-                                            if "nano" in m["value"].lower()
+                                            if m["value"] == "gpt-5.2-auto"
                                         ),
                                         AVAILABLE_MODELS[0]["value"],
                                     )
@@ -258,6 +258,14 @@ def create_ankigen_interface(theme=None, css=None, js=None):
                             generate_button = gr.Button(
                                 "Generate Cards", variant="primary"
                             )
+                        status_markdown = gr.Markdown("")
+                        log_output = gr.Textbox(
+                            label="Live Logs",
+                            lines=8,
+                            interactive=False,
+                        )
+                        generation_active = gr.State(False)
+                        log_timer = gr.Timer(2)
 
                 with gr.Tab("Results", id="results"):
                     with gr.Group() as cards_output:
@@ -401,7 +409,45 @@ def create_ankigen_interface(theme=None, css=None, js=None):
                 )
                 return output_df, total_html, token_html, gr.Tabs(selected="results")
 
+            def refresh_logs(active: bool):
+                if not active:
+                    return gr.update()
+                return get_recent_logs()
+
+            log_timer.tick(
+                fn=refresh_logs,
+                inputs=[generation_active],
+                outputs=[log_output],
+            )
+
+            def start_generation_ui():
+                return (
+                    gr.update(
+                        value="**Generating cards...** This can take a bit.",
+                        visible=True,
+                    ),
+                    gr.update(interactive=False),
+                    True,
+                    get_recent_logs(),
+                )
+
+            def finish_generation_ui():
+                return (
+                    gr.update(value="**Ready.**", visible=True),
+                    gr.update(interactive=True),
+                    False,
+                )
+
             generate_button.click(
+                fn=start_generation_ui,
+                inputs=[],
+                outputs=[
+                    status_markdown,
+                    generate_button,
+                    generation_active,
+                    log_output,
+                ],
+            ).then(
                 fn=handle_generate_click,
                 inputs=[
                     api_key_input,
@@ -417,6 +463,10 @@ def create_ankigen_interface(theme=None, css=None, js=None):
                 ],
                 outputs=[output, total_cards_html, token_usage_html, main_tabs],
                 show_progress="full",
+            ).then(
+                fn=finish_generation_ui,
+                inputs=[],
+                outputs=[status_markdown, generate_button, generation_active],
             )
 
             # Define handler for CSV export (similar to APKG)
@@ -592,7 +642,7 @@ def create_ankigen_interface(theme=None, css=None, js=None):
                             value=config.get("generate_cloze_checkbox", False)
                         ),  # generate_cloze_checkbox
                         gr.update(
-                            value=config.get("model_choice", "gpt-4.1-nano")
+                            value=config.get("model_choice", "gpt-5.2-auto")
                         ),  # model_choice
                         gr.update(
                             open=True

@@ -143,7 +143,7 @@ async def generate_cards_from_config(
             generation_mode="subject",
             source_text="",
             url_input="",
-            model_name=config.get("model_choice", "gpt-5.1"),
+            model_name=config.get("model_choice", "gpt-5.2-auto"),
             topic_number=config.get("topic_number", 3),
             cards_per_topic=config.get("cards_per_topic", 5),
             preference_prompt=config.get("preference_prompt", ""),
@@ -221,7 +221,7 @@ def export_cards(
 @click.option(
     "--model",
     type=click.Choice(
-        ["gpt-5.1", "gpt-4.1", "gpt-4.1-nano"],
+        ["gpt-5.2-auto", "gpt-5.2-instant", "gpt-5.2-thinking"],
         case_sensitive=False,
     ),
     help="Model to use for generation (auto-selected if not specified)",

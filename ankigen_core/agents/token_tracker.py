@@ -48,7 +48,7 @@ class TokenTracker:
 
         Args:
             messages: List of message dicts (each with 'role', 'content', optional 'name')
-            model: OpenAI model identifier (e.g., 'gpt-4.1', 'gpt-4o')
+            model: OpenAI model identifier (e.g., 'gpt-5.2', 'gpt-4o')
 
         Returns:
             Total tokens required to send these messages to the model

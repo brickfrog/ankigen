@@ -53,7 +53,8 @@ Consider:
 4. Determine content type: concepts (theory/understanding), syntax (code/commands), api (library usage), practical (hands-on skills)
 5. TOPIC DECOMPOSITION: Break down the subject into distinct subtopics that together provide comprehensive coverage
 6. Recommend cloze cards for syntax/code, basic cards for concepts
-7. Choose model based on complexity: gpt-4.1 for complex topics, gpt-4.1-nano for basic/simple
+7. Choose model based on complexity: gpt-5.2-thinking for complex topics, gpt-5.2-instant for basic/simple, gpt-5.2-auto for mixed scope
+   - Valid model_choice values: "gpt-5.2-auto", "gpt-5.2-instant", "gpt-5.2-thinking"
 
 TOPIC DECOMPOSITION (topics_list):
 You MUST provide a topics_list - a list of distinct subtopics that together cover the subject comprehensively.
@@ -96,7 +97,7 @@ Provide a brief rationale for your choices."""
         try:
             config = await structured_agent_call(
                 openai_client=openai_client,
-                model="gpt-5.1",
+                model="gpt-5.2",
                 instructions=system_prompt,
                 user_input=user_prompt,
                 output_type=AutoConfigSchema,
@@ -128,7 +129,7 @@ Provide a brief rationale for your choices."""
                 cards_per_topic=8,
                 learning_preferences="Focus on fundamental concepts and core principles with practical examples",
                 generate_cloze=False,
-                model_choice="gpt-5.1",
+                model_choice="gpt-5.2-auto",
                 subject_type="concepts",
                 scope="medium",
                 rationale="Using default settings due to analysis error",
