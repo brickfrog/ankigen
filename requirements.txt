@@ -2,11 +2,11 @@
 #    uv pip compile pyproject.toml -o requirements.txt
 aiofiles==24.1.0
     # via gradio
-annotated-doc==0.0.3
+annotated-doc==0.0.4
     # via fastapi
 annotated-types==0.7.0
     # via pydantic
-anyio==4.9.0
+anyio==4.12.0
     # via
     #   gradio
     #   httpx
@@ -14,14 +14,14 @@ anyio==4.9.0
     #   openai
     #   sse-starlette
     #   starlette
-attrs==25.3.0
+attrs==25.4.0
     # via
     #   cyclopts
     #   jsonschema
     #   referencing
-authlib==1.6.5
+authlib==1.6.6
     # via fastmcp
-beartype==0.22.5
+beartype==0.22.9
     # via
     #   py-key-value-aio
     #   py-key-value-shared
@@ -33,31 +33,32 @@ brotli==1.2.0
     #   gradio
 cached-property==2.0.1
     # via genanki
-cachetools==6.2.1
+cachetools==6.2.4
     # via py-key-value-aio
-certifi==2025.6.15
+certifi==2025.11.12
     # via
     #   httpcore
     #   httpx
     #   requests
 cffi==2.0.0
     # via cryptography
-charset-normalizer==3.4.2
+charset-normalizer==3.4.4
     # via requests
 chevron==0.14.0
     # via genanki
-click==8.2.1
+click==8.3.1
     # via
     #   typer
+    #   typer-slim
     #   uvicorn
 colorama==0.4.6
     # via griffe
-cryptography==46.0.1
+cryptography==46.0.3
     # via
     #   authlib
     #   pyjwt
     #   secretstorage
-cyclopts==3.24.0
+cyclopts==4.4.0
     # via fastmcp
 diskcache==5.6.3
     # via py-key-value-aio
@@ -67,33 +68,33 @@ dnspython==2.8.0
     # via email-validator
 docstring-parser==0.17.0
     # via cyclopts
-docutils==0.22.2
+docutils==0.22.4
     # via rich-rst
 email-validator==2.3.0
     # via pydantic
-exceptiongroup==1.3.0
+exceptiongroup==1.3.1
     # via fastmcp
-fastapi==0.120.4
+fastapi==0.125.0
     # via gradio
 fastmcp==2.13.0
     # via ankigen (pyproject.toml)
-ffmpy==0.6.0
+ffmpy==1.0.0
     # via gradio
-filelock==3.18.0
+filelock==3.20.1
     # via huggingface-hub
-frozendict==2.4.6
+frozendict==2.4.7
     # via genanki
-fsspec==2025.5.1
+fsspec==2025.12.0
     # via
     #   gradio-client
     #   huggingface-hub
 genanki==0.13.1
     # via ankigen (pyproject.toml)
-gradio==6.0.2
+gradio==6.1.0
     # via ankigen (pyproject.toml)
 gradio-client==2.0.1
     # via gradio
-griffe==1.7.3
+griffe==1.15.0
     # via openai-agents
 groovy==0.1.2
     # via gradio
@@ -101,7 +102,7 @@ h11==0.16.0
     # via
     #   httpcore
     #   uvicorn
-hf-xet==1.1.5
+hf-xet==1.2.0
     # via huggingface-hub
 httpcore==1.0.9
     # via httpx
@@ -110,16 +111,17 @@ httpx==0.28.1
     #   fastmcp
     #   gradio
     #   gradio-client
+    #   huggingface-hub
     #   mcp
     #   openai
     #   safehttpx
-httpx-sse==0.4.1
+httpx-sse==0.4.3
     # via mcp
-huggingface-hub==0.35.1
+huggingface-hub==1.2.3
     # via
     #   gradio
     #   gradio-client
-idna==3.10
+idna==3.11
     # via
     #   anyio
     #   email-validator
@@ -139,9 +141,9 @@ jeepney==0.9.0
     #   secretstorage
 jinja2==3.1.6
     # via gradio
-jiter==0.10.0
+jiter==0.12.0
     # via openai
-jsonschema==4.24.0
+jsonschema==4.25.1
     # via
     #   mcp
     #   openapi-core
@@ -151,24 +153,24 @@ jsonschema-path==0.3.4
     # via
     #   openapi-core
     #   openapi-spec-validator
-jsonschema-specifications==2025.4.1
+jsonschema-specifications==2025.9.1
     # via
     #   jsonschema
     #   openapi-schema-validator
-keyring==25.6.0
+keyring==25.7.0
     # via py-key-value-aio
 lazy-object-proxy==1.12.0
     # via openapi-spec-validator
 lxml==6.0.2
     # via ankigen (pyproject.toml)
-markdown-it-py==3.0.0
+markdown-it-py==4.0.0
     # via rich
-markupsafe==3.0.2
+markupsafe==3.0.3
     # via
     #   gradio
     #   jinja2
     #   werkzeug
-mcp==1.20.0
+mcp==1.24.0
     # via
     #   fastmcp
     #   openai-agents
@@ -179,17 +181,17 @@ more-itertools==10.8.0
     #   jaraco-classes
     #   jaraco-functools
     #   openapi-core
-numpy==2.3.1
+numpy==2.3.5
     # via
     #   gradio
     #   pandas
-openai==2.8.1
+openai==2.14.0
     # via
     #   ankigen (pyproject.toml)
     #   openai-agents
-openai-agents==0.6.1
+openai-agents==0.6.4
     # via ankigen (pyproject.toml)
-openapi-core==0.19.5
+openapi-core==0.21.0
     # via fastmcp
 openapi-pydantic==0.5.1
     # via fastmcp
@@ -199,26 +201,24 @@ openapi-schema-validator==0.6.3
     #   openapi-spec-validator
 openapi-spec-validator==0.7.2
     # via openapi-core
-orjson==3.10.18
+orjson==3.11.5
     # via gradio
 packaging==25.0
     # via
     #   gradio
     #   gradio-client
     #   huggingface-hub
-pandas==2.3.2
+pandas==2.3.3
     # via
     #   ankigen (pyproject.toml)
     #   gradio
-parse==1.20.2
-    # via openapi-core
 pathable==0.4.4
     # via jsonschema-path
 pathvalidate==3.3.1
     # via py-key-value-aio
-pillow==11.3.0
+pillow==12.0.0
     # via gradio
-platformdirs==4.5.0
+platformdirs==4.5.1
     # via fastmcp
 py-key-value-aio==0.2.8
     # via fastmcp
@@ -239,7 +239,7 @@ pydantic==2.12.4
     #   pydantic-settings
 pydantic-core==2.41.5
     # via pydantic
-pydantic-settings==2.10.1
+pydantic-settings==2.12.0
     # via mcp
 pydub==0.25.1
     # via gradio
@@ -247,21 +247,21 @@ pygments==2.19.2
     # via rich
 pyjwt==2.10.1
     # via mcp
-pyperclip==1.10.0
+pyperclip==1.11.0
     # via fastmcp
 python-dateutil==2.9.0.post0
     # via pandas
-python-dotenv==1.1.1
+python-dotenv==1.2.1
     # via
     #   fastmcp
     #   pydantic-settings
-python-multipart==0.0.20
+python-multipart==0.0.21
     # via
     #   gradio
     #   mcp
 pytz==2025.2
     # via pandas
-pyyaml==6.0.2
+pyyaml==6.0.3
     # via
     #   genanki
     #   gradio
@@ -272,57 +272,57 @@ referencing==0.36.2
     #   jsonschema
     #   jsonschema-path
     #   jsonschema-specifications
-regex==2024.11.6
+regex==2025.11.3
     # via tiktoken
-requests==2.32.4
+requests==2.32.5
     # via
-    #   huggingface-hub
     #   jsonschema-path
     #   openai-agents
     #   tiktoken
 rfc3339-validator==0.1.4
     # via openapi-schema-validator
-rich==14.0.0
+rich==14.2.0
     # via
     #   cyclopts
     #   fastmcp
     #   rich-rst
     #   typer
-rich-rst==1.3.1
+rich-rst==1.3.2
     # via cyclopts
-rpds-py==0.26.0
+rpds-py==0.30.0
     # via
     #   jsonschema
     #   referencing
 safehttpx==0.1.7
     # via gradio
-secretstorage==3.4.0
+secretstorage==3.5.0
     # via keyring
 semantic-version==2.10.0
     # via gradio
 shellingham==1.5.4
-    # via typer
+    # via
+    #   huggingface-hub
+    #   typer
 six==1.17.0
     # via
     #   python-dateutil
     #   rfc3339-validator
 sniffio==1.3.1
-    # via
-    #   anyio
-    #   openai
-soupsieve==2.7
+    # via openai
+soupsieve==2.8.1
     # via beautifulsoup4
-sse-starlette==2.3.6
+sse-starlette==3.0.4
     # via mcp
-starlette==0.49.3
+starlette==0.50.0
     # via
     #   ankigen (pyproject.toml)
     #   fastapi
     #   gradio
     #   mcp
+    #   sse-starlette
 tenacity==9.1.2
     # via ankigen (pyproject.toml)
-tiktoken==0.11.0
+tiktoken==0.12.0
     # via ankigen (pyproject.toml)
 tomlkit==0.13.3
     # via gradio
@@ -330,9 +330,11 @@ tqdm==4.67.1
     # via
     #   huggingface-hub
     #   openai
-typer==0.16.0
+typer==0.20.0
     # via gradio
-types-requests==2.32.4.20250611
+typer-slim==0.20.0
+    # via huggingface-hub
+types-requests==2.32.4.20250913
     # via openai-agents
 typing-extensions==4.15.0
     # via
@@ -343,6 +345,7 @@ typing-extensions==4.15.0
     #   gradio
     #   gradio-client
     #   huggingface-hub
+    #   mcp
     #   openai
     #   openai-agents
     #   openapi-core
@@ -352,22 +355,24 @@ typing-extensions==4.15.0
     #   referencing
     #   starlette
     #   typer
+    #   typer-slim
     #   typing-inspection
 typing-inspection==0.4.2
     # via
+    #   mcp
     #   pydantic
     #   pydantic-settings
-tzdata==2025.2
+tzdata==2025.3
     # via pandas
-urllib3==2.5.0
+urllib3==2.6.2
     # via
     #   requests
     #   types-requests
-uvicorn==0.34.3
+uvicorn==0.38.0
     # via
     #   gradio
     #   mcp
 websockets==15.0.1
     # via fastmcp
-werkzeug==3.1.1
+werkzeug==3.1.4
     # via openapi-core

@@ -65,8 +65,9 @@ except (AttributeError, ImportError):
 # CSS for the interface (moved to module level for Gradio 6 compatibility)
 custom_css = """
     #footer {display:none !important}
+    .gradio-container {max-width: 100% !important; padding: 0 24px;}
     .tall-dataframe {min-height: 500px !important}
-    .contain {max-width: 100% !important; margin: auto;}
+    .contain {width: 100% !important; max-width: 100% !important; margin: 0 auto; box-sizing: border-box;}
     .output-cards {border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);}
     .hint-text {font-size: 0.9em; color: #666; margin-top: 4px;}
     .export-group > .gradio-group { margin-bottom: 0 !important; padding-bottom: 5px !important; }
@@ -158,170 +159,179 @@ def create_ankigen_interface(theme=None, css=None, js=None):
             gr.Markdown("# 📚 AnkiGen - Anki Card Generator")
             gr.Markdown("#### Generate Anki flashcards using AI.")
 
-            with gr.Accordion("Configuration Settings", open=True):
-                with gr.Row():
-                    with gr.Column(scale=1):
-                        generation_mode = gr.Radio(
-                            choices=[
-                                ("Single Subject", "subject"),
-                            ],
-                            value="subject",
-                            label="Generation Mode",
-                            info="Choose how you want to generate content",
-                            visible=False,  # Hidden since only one mode exists
-                        )
-                        with gr.Group() as subject_mode:
-                            subject = gr.Textbox(
-                                label="Subject",
-                                placeholder="e.g., 'Basic SQL Concepts'",
-                            )
+            with gr.Tabs(selected="setup") as main_tabs:
+                with gr.Tab("Setup", id="setup"):
+                    with gr.Accordion("Configuration Settings", open=True):
+                        with gr.Row():
+                            with gr.Column(scale=1):
+                                generation_mode = gr.Radio(
+                                    choices=[
+                                        ("Single Subject", "subject"),
+                                    ],
+                                    value="subject",
+                                    label="Generation Mode",
+                                    info="Choose how you want to generate content",
+                                    visible=False,  # Hidden since only one mode exists
+                                )
+                                with gr.Group() as subject_mode:
+                                    subject = gr.Textbox(
+                                        label="Subject",
+                                        placeholder="e.g., 'Basic SQL Concepts'",
+                                    )
+                                api_key_input = gr.Textbox(
+                                    label="OpenAI API Key",
+                                    type="password",
+                                    placeholder="Enter your OpenAI API key (sk-...)",
+                                    value=os.getenv("OPENAI_API_KEY", ""),
+                                    info="Your key is used solely for processing your requests.",
+                                    elem_id="api-key-textbox",
+                                )
+
+                                # Context7 Library Documentation
+                                library_accordion = gr.Accordion(
+                                    "Library Documentation (optional)", open=True
+                                )
+                                with library_accordion:
+                                    library_name_input = gr.Textbox(
+                                        label="Library Name",
+                                        placeholder="e.g., 'react', 'tensorflow', 'pandas'",
+                                        info="Fetch up-to-date documentation for this library",
+                                    )
+                                    library_topic_input = gr.Textbox(
+                                        label="Documentation Focus (optional)",
+                                        placeholder="e.g., 'hooks', 'data loading', 'transforms'",
+                                        info="Specific topic within the library to focus on",
+                                    )
+                            with gr.Column(scale=1):
+                                with gr.Accordion("Advanced Settings", open=True):
+                                    model_choices_ui = [
+                                        (m["label"], m["value"])
+                                        for m in AVAILABLE_MODELS
+                                    ]
+                                    default_model_value = next(
+                                        (
+                                            m["value"]
+                                            for m in AVAILABLE_MODELS
+                                            if "nano" in m["value"].lower()
+                                        ),
+                                        AVAILABLE_MODELS[0]["value"],
+                                    )
+                                    model_choice = gr.Dropdown(
+                                        choices=model_choices_ui,
+                                        value=default_model_value,
+                                        label="Model Selection",
+                                        info="Select AI model for generation",
+                                        allow_custom_value=True,
+                                    )
+                                    topic_number = gr.Slider(
+                                        label="Number of Topics",
+                                        minimum=2,
+                                        maximum=20,
+                                        step=1,
+                                        value=2,
+                                    )
+                                    cards_per_topic = gr.Slider(
+                                        label="Cards per Topic",
+                                        minimum=2,
+                                        maximum=30,
+                                        step=1,
+                                        value=3,
+                                    )
+                                    total_cards_preview = gr.Markdown(
+                                        f"**Total cards:** {2 * 3}"
+                                    )
+                                    preference_prompt = gr.Textbox(
+                                        label="Learning Preferences",
+                                        placeholder="e.g., 'Beginner focus'",
+                                        lines=3,
+                                    )
+                                    generate_cloze_checkbox = gr.Checkbox(
+                                        label="Generate Cloze Cards",
+                                        value=True,
+                                    )
+
+                        with gr.Row():
                             auto_fill_btn = gr.Button(
                                 "Auto-fill",
                                 variant="secondary",
                             )
-                        api_key_input = gr.Textbox(
-                            label="OpenAI API Key",
-                            type="password",
-                            placeholder="Enter your OpenAI API key (sk-...)",
-                            value=os.getenv("OPENAI_API_KEY", ""),
-                            info="Your key is used solely for processing your requests.",
-                            elem_id="api-key-textbox",
-                        )
+                            generate_button = gr.Button(
+                                "Generate Cards", variant="primary"
+                            )
 
-                        # Context7 Library Documentation
-                        library_accordion = gr.Accordion(
-                            "Library Documentation (optional)", open=False
-                        )
-                        with library_accordion:
-                            library_name_input = gr.Textbox(
-                                label="Library Name",
-                                placeholder="e.g., 'react', 'tensorflow', 'pandas'",
-                                info="Fetch up-to-date documentation for this library",
-                            )
-                            library_topic_input = gr.Textbox(
-                                label="Documentation Focus (optional)",
-                                placeholder="e.g., 'hooks', 'data loading', 'transforms'",
-                                info="Specific topic within the library to focus on",
-                            )
-                    with gr.Column(scale=1):
-                        with gr.Accordion("Advanced Settings", open=False):
-                            model_choices_ui = [
-                                (m["label"], m["value"]) for m in AVAILABLE_MODELS
-                            ]
-                            default_model_value = next(
-                                (
-                                    m["value"]
-                                    for m in AVAILABLE_MODELS
-                                    if "nano" in m["value"].lower()
-                                ),
-                                AVAILABLE_MODELS[0]["value"],
-                            )
-                            model_choice = gr.Dropdown(
-                                choices=model_choices_ui,
-                                value=default_model_value,
-                                label="Model Selection",
-                                info="Select AI model for generation",
-                                allow_custom_value=True,
-                            )
-                            topic_number = gr.Slider(
-                                label="Number of Topics",
-                                minimum=2,
-                                maximum=20,
-                                step=1,
-                                value=2,
-                            )
-                            cards_per_topic = gr.Slider(
-                                label="Cards per Topic",
-                                minimum=2,
-                                maximum=30,
-                                step=1,
-                                value=3,
-                            )
-                            preference_prompt = gr.Textbox(
-                                label="Learning Preferences",
-                                placeholder="e.g., 'Beginner focus'",
-                                lines=3,
-                            )
-                            generate_cloze_checkbox = gr.Checkbox(
-                                label="Generate Cloze Cards (Experimental)",
-                                value=False,
-                            )
+                with gr.Tab("Results", id="results"):
+                    with gr.Group() as cards_output:
+                        gr.Markdown("### Generated Cards")
+                        with gr.Accordion("Output Format", open=False):
                             gr.Markdown(
-                                "*Cards are generated by the subject expert agent with a quick self-review to catch obvious gaps.*"
+                                "Cards: Index, Topic, Type, Q, A, Explanation, Example, Prerequisites, Outcomes, Difficulty. Export: CSV, .apkg",
                             )
-
-            generate_button = gr.Button("Generate Cards", variant="primary")
-
-            with gr.Group() as cards_output:
-                gr.Markdown("### Generated Cards")
-                with gr.Accordion("Output Format", open=False):
-                    gr.Markdown(
-                        "Cards: Index, Topic, Type, Q, A, Explanation, Example, Prerequisites, Outcomes, Difficulty. Export: CSV, .apkg",
-                    )
-                    with gr.Accordion("Example Card Format", open=False):
-                        gr.Code(
-                            label="Example Card",
-                            value='{"front": ..., "back": ..., "metadata": ...}',
-                            language="json",
+                            with gr.Accordion("Example Card Format", open=False):
+                                gr.Code(
+                                    label="Example Card",
+                                    value='{"front": ..., "back": ..., "metadata": ...}',
+                                    language="json",
+                                )
+                        output = gr.DataFrame(
+                            value=example_data,
+                            headers=[
+                                "Index",
+                                "Topic",
+                                "Card_Type",
+                                "Question",
+                                "Answer",
+                                "Explanation",
+                                "Example",
+                                "Prerequisites",
+                                "Learning_Outcomes",
+                                "Difficulty",
+                            ],
+                            datatype=[
+                                "number",
+                                "str",
+                                "str",
+                                "str",
+                                "str",
+                                "str",
+                                "str",
+                                "str",
+                                "str",
+                                "str",
+                            ],
+                            interactive=True,
+                            elem_classes="tall-dataframe",
+                            wrap=True,
+                            column_widths=[
+                                50,
+                                100,
+                                80,
+                                200,
+                                200,
+                                250,
+                                200,
+                                150,
+                                150,
+                                100,
+                            ],
                         )
-                output = gr.DataFrame(
-                    value=example_data,
-                    headers=[
-                        "Index",
-                        "Topic",
-                        "Card_Type",
-                        "Question",
-                        "Answer",
-                        "Explanation",
-                        "Example",
-                        "Prerequisites",
-                        "Learning_Outcomes",
-                        "Difficulty",
-                    ],
-                    datatype=[
-                        "number",
-                        "str",
-                        "str",
-                        "str",
-                        "str",
-                        "str",
-                        "str",
-                        "str",
-                        "str",
-                        "str",
-                    ],
-                    interactive=True,
-                    elem_classes="tall-dataframe",
-                    wrap=True,
-                    column_widths=[
-                        50,
-                        100,
-                        80,
-                        200,
-                        200,
-                        250,
-                        200,
-                        150,
-                        150,
-                        100,
-                    ],
-                )
-                total_cards_html = gr.HTML(
-                    value="<div><b>Total Cards Generated:</b> <span id='total-cards-count'>0</span></div>",
-                    visible=False,
-                )
+                        total_cards_html = gr.HTML(
+                            value="<div><b>Total Cards Generated:</b> <span id='total-cards-count'>0</span></div>",
+                            visible=False,
+                        )
 
-                # Token usage display
-                token_usage_html = gr.HTML(
-                    value="<div style='margin-top: 8px;'><b>Token Usage:</b> <span id='token-usage-display'>No usage data</span></div>",
-                    visible=True,
-                )
+                        # Token usage display
+                        token_usage_html = gr.HTML(
+                            value="<div style='margin-top: 8px;'><b>Token Usage:</b> <span id='token-usage-display'>No usage data</span></div>",
+                            visible=True,
+                        )
 
-                # Export buttons
-                with gr.Row(elem_classes="export-group"):
-                    export_csv_button = gr.Button("Export to CSV")
-                    export_apkg_button = gr.Button("Export to .apkg")
-                download_file_output = gr.File(label="Download Deck", visible=False)
+                        # Export buttons
+                        with gr.Row(elem_classes="export-group"):
+                            export_csv_button = gr.Button("Export to CSV")
+                            export_apkg_button = gr.Button("Export to .apkg")
+                        download_file_output = gr.File(
+                            label="Download Deck", visible=False
+                        )
 
             # --- Event Handlers --- (Updated to use functions from ankigen_core)
             generation_mode.change(
@@ -339,6 +349,26 @@ def create_ankigen_interface(theme=None, css=None, js=None):
                 ],
             )
 
+            def update_total_cards_preview(topics_value: int, cards_value: int) -> str:
+                """Update the total cards preview based on current sliders."""
+                try:
+                    topics = int(topics_value)
+                    cards = int(cards_value)
+                except (TypeError, ValueError):
+                    return "**Total cards:** —"
+                return f"**Total cards:** {topics * cards}"
+
+            topic_number.change(
+                fn=update_total_cards_preview,
+                inputs=[topic_number, cards_per_topic],
+                outputs=[total_cards_preview],
+            )
+            cards_per_topic.change(
+                fn=update_total_cards_preview,
+                inputs=[topic_number, cards_per_topic],
+                outputs=[total_cards_preview],
+            )
+
             # Define an async wrapper for the orchestrate_card_generation
             async def handle_generate_click(
                 api_key_input_val,
@@ -353,7 +383,7 @@ def create_ankigen_interface(theme=None, css=None, js=None):
                 library_topic_val,
                 progress=gr.Progress(track_tqdm=True),
             ):
-                return await orchestrate_card_generation(
+                output_df, total_html, token_html = await orchestrate_card_generation(
                     client_manager,
                     response_cache,
                     api_key_input_val,
@@ -369,6 +399,7 @@ def create_ankigen_interface(theme=None, css=None, js=None):
                     library_name=library_name_val if library_name_val else None,
                     library_topic=library_topic_val if library_topic_val else None,
                 )
+                return output_df, total_html, token_html, gr.Tabs(selected="results")
 
             generate_button.click(
                 fn=handle_generate_click,
@@ -384,7 +415,7 @@ def create_ankigen_interface(theme=None, css=None, js=None):
                     library_name_input,
                     library_topic_input,
                 ],
-                outputs=[output, total_cards_html, token_usage_html],
+                outputs=[output, total_cards_html, token_usage_html, main_tabs],
                 show_progress="full",
             )
 
@@ -514,11 +545,11 @@ def create_ankigen_interface(theme=None, css=None, js=None):
                 """Handle auto-fill button click to populate all settings"""
                 if not subject_text or not subject_text.strip():
                     gr.Warning("Please enter a subject first")
-                    return [gr.update()] * 8  # Return no updates for all outputs
+                    return [gr.update()] * 9  # Return no updates for all outputs
 
                 if not api_key:
                     gr.Warning("OpenAI API key is required for auto-configuration")
-                    return [gr.update()] * 8
+                    return [gr.update()] * 9
 
                 try:
                     progress(0, desc="Analyzing subject...")
@@ -535,7 +566,13 @@ def create_ankigen_interface(theme=None, css=None, js=None):
 
                     if not config:
                         gr.Warning("Could not generate configuration")
-                        return [gr.update()] * 8
+                        return [gr.update()] * 9
+
+                    topics_value = config.get("topic_number", 3)
+                    cards_value = config.get("cards_per_topic", 5)
+                    total_cards_text = (
+                        f"**Total cards:** {int(topics_value) * int(cards_value)}"
+                    )
 
                     # Return updates for all relevant UI components
                     return (
@@ -545,10 +582,9 @@ def create_ankigen_interface(theme=None, css=None, js=None):
                         gr.update(
                             value=config.get("library_topic", "")
                         ),  # library_topic_input
-                        gr.update(value=config.get("topic_number", 3)),  # topic_number
-                        gr.update(
-                            value=config.get("cards_per_topic", 5)
-                        ),  # cards_per_topic
+                        gr.update(value=topics_value),  # topic_number
+                        gr.update(value=cards_value),  # cards_per_topic
+                        gr.update(value=total_cards_text),  # total_cards_preview
                         gr.update(
                             value=config.get("preference_prompt", "")
                         ),  # preference_prompt
@@ -566,7 +602,7 @@ def create_ankigen_interface(theme=None, css=None, js=None):
                 except Exception as e:
                     logger.error(f"Auto-configuration failed: {e}", exc_info=True)
                     gr.Error(f"Auto-configuration failed: {str(e)}")
-                    return [gr.update()] * 8
+                    return [gr.update()] * 9
 
             auto_fill_btn.click(
                 fn=handle_auto_fill_click,
@@ -576,6 +612,7 @@ def create_ankigen_interface(theme=None, css=None, js=None):
                     library_topic_input,
                     topic_number,
                     cards_per_topic,
+                    total_cards_preview,
                     preference_prompt,
                     generate_cloze_checkbox,
                     model_choice,
