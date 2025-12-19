@@ -150,6 +150,8 @@ async def orchestrate_card_generation(
 
         agent_subject = _map_generation_mode_to_subject(generation_mode, subject)
         context = _build_generation_context(generation_mode, source_text)
+        if preference_prompt:
+            context["learning_preferences"] = preference_prompt
         total_cards_needed = topic_number * cards_per_topic
 
         agent_cards, agent_metadata = await orchestrator.generate_cards_with_agents(

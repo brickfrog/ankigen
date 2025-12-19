@@ -98,6 +98,9 @@ class SubjectExpertAgent(BaseAgentWrapper):
             )
 
         if context:
+            learning_preferences = context.get("learning_preferences")
+            if learning_preferences:
+                user_input += f"\n\nLearning focus: {learning_preferences}"
             user_input += f"\n\nAdditional context: {context}"
 
         if previous_topics:
