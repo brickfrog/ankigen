@@ -30,7 +30,7 @@ fakeredis==2.33.0
 fastapi==0.120.4
 fastmcp==2.14.0
 ffmpy==0.6.0
-filelock==3.18.0
+filelock==3.20.2
 frozendict==2.4.6
 fsspec==2025.5.1
 genanki==0.13.1
@@ -77,7 +77,7 @@ packaging==25.0
 pandas==2.3.2
 pathable==0.4.4
 pathvalidate==3.3.1
-pillow==11.2.1
+pillow==12.1.0
 platformdirs==4.3.8
 prometheus-client==0.23.1
 py-key-value-aio==0.3.0
@@ -123,7 +123,7 @@ types-requests==2.32.4.20250611
 typing-extensions==4.15.0
 typing-inspection==0.4.2
 tzdata==2025.2
-urllib3==2.5.0
+urllib3==2.6.2
 uvicorn==0.40.0
 websockets==15.0.1
 wrapt==1.17.3
