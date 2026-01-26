@@ -1,0 +1,710 @@
+manifest:
+  version: "0.1.2"
+  schema: https://a2as.org/cert/schema
+  subject:
+    name: brickfrog/ankigen
+    source: https://github.com/brickfrog/ankigen
+    branch: master
+    commit: "cb806ae7"
+    scope: [ankigen_core/agents/__init__.py, ankigen_core/agents/base.py, ankigen_core/agents/config.py, ankigen_core/agents/generators.py,
+      ankigen_core/agents/schemas.py, ankigen_core/agents/token_tracker.py, ankigen_core/cli.py, ankigen_core/llm_interface.py,
+      ankigen_core/logging.py, ankigen_core/utils.py]
+  issued:
+    by: A2AS.org
+    at: '2026-01-26T16:13:09Z'
+  signatures:
+    digest: sha256:jpqu_mBrsvKhno4QfdxpEG_YD4O4834hpvjkl250POg
+    key: ed25519:-xN-PVB7qIK0gMEAfc0eJ8Dn6tCpcdYtpWImUZjqCVM
+    sig: ed25519:ZlfCtgwlrxhL3HdMZasNUYiTETa6BVg04CucOAsNxIF_8j1t2xi-NmtY-kBwDIUB_rQKmxLJMCsFHe-crv62CQ
+
+agents:
+  agent:
+    type: instance
+    models: [model]
+    params:
+      function: structured_agent_call
+      name: structured_output_agent
+      model_settings: model_settings
+      output_type: output_type
+      instructions: [instructions]
+  agent.BaseAgentWrapper.agent.0:
+    type: class
+    models: [self.config.model]
+    params:
+      class: BaseAgentWrapper
+      name: self.config.name
+      model_settings: model_settings
+      output_type: self.config.output_type
+      instance: agent.BaseAgentWrapper.agent
+      instructions: [clean_instructions]
+  agent.BaseAgentWrapper.agent.1:
+    type: class
+    models: [self.config.model]
+    params:
+      class: BaseAgentWrapper
+      name: self.config.name
+      model_settings: model_settings
+      instance: agent.BaseAgentWrapper.agent
+      instructions: [clean_instructions]
+
+models:
+  model:
+    type: variable
+    agents: [agent]
+  self.config.model:
+    type: variable
+    agents: [agent.BaseAgentWrapper.agent.0, agent.BaseAgentWrapper.agent.1]
+
+imports:
+  Agent: agents.Agent
+  AgentConfig: base.AgentConfig
+  AgentConfigManager: config.AgentConfigManager
+  AgentOrchestrator: ankigen_core.agents.integration.AgentOrchestrator
+  Any: typing.Any
+  APIConnectionError: openai.APIConnectionError
+  APIStatusError: openai.APIStatusError
+  asdict: dataclasses.asdict
+  asyncio: asyncio
+  AsyncOpenAI: openai.AsyncOpenAI
+  AutoConfigSchema: ankigen_core.agents.schemas.AutoConfigSchema
+  AutoConfigService: ankigen_core.auto_config.AutoConfigService
+  AVAILABLE_MODELS: ankigen_core.card_generator.AVAILABLE_MODELS
+  BarColumn: rich.progress.BarColumn
+  BaseAgentWrapper: base.BaseAgentWrapper
+  BaseModel: pydantic.BaseModel
+  BeautifulSoup: bs4.BeautifulSoup
+  Card: ankigen_core.models.Card
+  CardBack: ankigen_core.models.CardBack
+  CardFront: ankigen_core.models.CardFront
+  CardsGenerationSchema: schemas.CardsGenerationSchema
+  click: click
+  Console: rich.console.Console
+  Context7Client: ankigen_core.context7.Context7Client
+  dataclass: dataclasses.dataclass
+  datetime: datetime.datetime
+  Dict: typing.Dict
+  Enum: enum.Enum
+  Environment: jinja2.Environment
+  export_dataframe_to_apkg: ankigen_core.exporters.export_dataframe_to_apkg
+  export_dataframe_to_csv: ankigen_core.exporters.export_dataframe_to_csv
+  field: dataclasses.field
+  Field: pydantic.Field
+  FileSystemLoader: jinja2.FileSystemLoader
+  get_config_manager: config.get_config_manager
+  get_logger: ankigen_core.utils.get_logger
+  get_token_tracker: ankigen_core.agents.token_tracker.get_token_tracker
+  gr: gradio
+  hashlib: hashlib
+  ItemHelpers: agents.items.ItemHelpers
+  json: json
+  List: typing.List
+  logger: ankigen_core.logging.logger
+  logging: logging
+  ModelSettings: agents.ModelSettings
+  OpenAIClientManager: ankigen_core.llm_interface.OpenAIClientManager
+  OpenAIError: openai.OpenAIError
+  Optional: typing.Optional
+  orchestrate_card_generation: ankigen_core.card_generator.orchestrate_card_generation
+  os: os
+  Panel: rich.panel.Panel
+  Path: pathlib.Path
+  pd: pandas
+  Progress: rich.progress.Progress
+  RateLimitError: openai.RateLimitError
+  re: re
+  Reasoning: openai.types.shared.Reasoning
+  requests: requests
+  ResponseCache: ankigen_core.utils.ResponseCache
+  RotatingFileHandler: logging.handlers.RotatingFileHandler
+  Runner: agents.Runner
+  set_default_openai_client: agents.set_default_openai_client
+  set_tracing_disabled: agents.set_tracing_disabled
+  SpinnerColumn: rich.progress.SpinnerColumn
+  strip_html_tags: ankigen_core.utils.strip_html_tags
+  structured_agent_call: ankigen_core.llm_interface.structured_agent_call
+  SubjectExpertAgent: generators.SubjectExpertAgent
+  sys: sys
+  Table: rich.table.Table
+  TextColumn: rich.progress.TextColumn
+  tiktoken: tiktoken
+  time: time
+  track_usage_from_agents_sdk: token_tracker.track_usage_from_agents_sdk
+  Tuple: typing.Tuple
+  TypeVar: typing.TypeVar
+  update_mode_visibility: ankigen_core.ui_logic.update_mode_visibility
+  version: packaging.version
+
+functions:
+  __aenter__:
+    type: async
+    module: ankigen_core.llm_interface
+    args: [self]
+  __aexit__:
+    type: async
+    module: ankigen_core.llm_interface
+    args: [self, exc_type, exc_val, exc_tb]
+  __enter__:
+    type: sync
+    module: ankigen_core.llm_interface
+    args: [self]
+  __exit__:
+    type: sync
+    module: ankigen_core.llm_interface
+    args: [self, exc_type, exc_val, exc_tb]
+  __init__:
+    type: sync
+    module: ankigen_core.agents.generators
+    args: [self, openai_client, model]
+  __post_init__:
+    type: sync
+    module: ankigen_core.agents.base
+    args: [self]
+  _accumulate_usage:
+    type: sync
+    module: ankigen_core.agents.generators
+    args: [self, total_usage, batch_usage]
+    params:
+      returns: None
+  _build_batch_prompt:
+    type: sync
+    module: ankigen_core.agents.generators
+    args: [self, topic, cards_in_batch, batch_num, context, previous_topics]
+    params:
+      returns: str
+  _build_generation_context:
+    type: sync
+    module: ankigen_core.card_generator
+    args: [generation_mode, source_text]
+    params:
+      returns: Dict
+  _build_generation_prompt:
+    type: sync
+    module: ankigen_core.agents.generators
+    args: [self, topic, num_cards, difficulty, prerequisites, context]
+    params:
+      returns: str
+  _create_key:
+    type: sync
+    module: ankigen_core.utils
+    args: [self, prompt, model]
+    params:
+      returns: str
+  _enhance_input_with_context:
+    type: sync
+    module: ankigen_core.agents.base
+    args: [self, user_input, context]
+    params:
+      returns: str
+  _execute_with_retry:
+    type: async
+    module: ankigen_core.agents.base
+    args: [self, enhanced_input]
+    params:
+      returns: Any
+  _extract_and_track_usage:
+    type: sync
+    module: ankigen_core.agents.base
+    args: [self, result]
+    params:
+      returns: Dict
+  _extract_output:
+    type: sync
+    module: ankigen_core.agents.base
+    args: [self, result]
+    params:
+      returns: Any
+  _extract_topics_for_dedup:
+    type: sync
+    module: ankigen_core.agents.generators
+    args: [self, batch_cards]
+    params:
+      returns: List[str]
+  _fetch_library_docs:
+    type: async
+    module: ankigen_core.agents.integration
+    args: [self, library_name, library_topic, num_cards]
+    params:
+      returns: Optional[str]
+  _format_cards_to_dataframe:
+    type: sync
+    module: ankigen_core.card_generator
+    args: [agent_cards, subject]
+    params:
+      returns: tuple
+  _generate_cards_per_topic:
+    type: async
+    module: ankigen_core.agents.integration
+    args: [self, main_subject, subject, topics_list, cards_per_topic, difficulty, context, generate_cloze]
+    params:
+      returns: List[Card]
+  _generation_phase:
+    type: async
+    module: ankigen_core.agents.integration
+    args: [self, topic, subject, num_cards, difficulty, context, generate_cloze]
+    params:
+      returns: List[Card]
+  _get_model_for_agent:
+    type: sync
+    module: ankigen_core.agents.config
+    args: [self, agent_name, default_model]
+    params:
+      returns: str
+  _get_token_usage_html:
+    type: sync
+    module: ankigen_core.card_generator
+    args: [token_tracker]
+    params:
+      returns: str
+  _load_configs_from_template:
+    type: sync
+    module: ankigen_core.agents.config
+    args: [self, template_name]
+  _load_default_configs:
+    type: sync
+    module: ankigen_core.agents.config
+    args: [self]
+  _map_generation_mode_to_subject:
+    type: sync
+    module: ankigen_core.card_generator
+    args: [generation_mode, subject]
+    params:
+      returns: str
+  _parse_cards_response:
+    type: sync
+    module: ankigen_core.agents.generators
+    args: [self, response, topic]
+    params:
+      returns: List[Card]
+  _parse_model_selection:
+    type: sync
+    module: ankigen_core.card_generator
+    args: [model_selection]
+    params:
+      returns: tuple
+  _validate_config:
+    type: sync
+    module: ankigen_core.agents.config
+    args: [self, config_data]
+    params:
+      returns: bool
+  aclose:
+    type: async
+    module: ankigen_core.llm_interface
+    args: [self]
+    params:
+      returns: None
+  analyze_subject:
+    type: async
+    module: ankigen_core.auto_config
+    args: [self, subject, openai_client, target_topic_count]
+    params:
+      returns: AutoConfigSchema
+  auto_configure:
+    type: async
+    module: ankigen_core.auto_config
+    args: [self, subject, openai_client, target_topic_count]
+    params:
+      returns: Dict
+  auto_configure_from_prompt:
+    type: async
+    module: ankigen_core.cli
+    args: [prompt, api_key, override_topics, override_cards, override_model]
+    params:
+      returns: dict
+  card_dict_to_card:
+    type: sync
+    module: ankigen_core.agents.generators
+    args: [card_data, default_topic, default_subject]
+    params:
+      returns: Card
+  clear:
+    type: sync
+    module: ankigen_core.utils
+    args: [self]
+    params:
+      returns: None
+  close:
+    type: sync
+    module: ankigen_core.llm_interface
+    args: [self]
+    params:
+      returns: None
+  count_tokens_for_messages:
+    type: sync
+    module: ankigen_core.agents.token_tracker
+    args: [self, messages, model]
+    params:
+      returns: int
+  count_tokens_for_text:
+    type: sync
+    module: ankigen_core.agents.token_tracker
+    args: [self, text, model]
+    params:
+      returns: int
+  create_ankigen_interface:
+    type: sync
+    module: app
+    args: [theme, css, js]
+  execute:
+    type: async
+    module: ankigen_core.agents.base
+    args: [self, user_input, context]
+    params:
+      returns: tuple
+  export_cards:
+    type: sync
+    module: ankigen_core.cli
+    args: [df, output_path, deck_name, export_format]
+    params:
+      returns: str
+  fetch_webpage_text:
+    type: sync
+    module: ankigen_core.utils
+    args: [url]
+    params:
+      returns: str
+  finish_generation_ui:
+    type: sync
+    module: app
+  format_cards_for_dataframe:
+    type: sync
+    module: ankigen_core.card_generator
+    args: [cards, topic_name, topic_index, start_index]
+    params:
+      returns: list
+  generate_cards:
+    type: async
+    module: ankigen_core.agents.generators
+    args: [self, topic, num_cards, context]
+    params:
+      returns: List[Card]
+  generate_cards_from_config:
+    type: async
+    module: ankigen_core.cli
+    args: [prompt, config, api_key]
+    params:
+      returns: tuple
+  generate_cards_with_agents:
+    type: async
+    module: ankigen_core.agents.integration
+    args: [self, topic, subject, num_cards, difficulty, context, library_name, library_topic, generate_cloze, topics_list,
+      cards_per_topic]
+    params:
+      returns: Tuple
+  generate_token_usage_html:
+    type: sync
+    module: ankigen_core.card_generator
+    args: [token_usage]
+  get:
+    type: sync
+    module: ankigen_core.utils
+    args: [self, prompt, model]
+    params:
+      returns: Optional[Any]
+  get_agent_config:
+    type: sync
+    module: ankigen_core.agents.config
+    args: [self, agent_name]
+    params:
+      returns: Optional[AgentConfig]
+  get_api_key:
+    type: sync
+    module: ankigen_core.cli
+    params:
+      returns: str
+  get_client:
+    type: sync
+    module: ankigen_core.llm_interface
+    args: [self]
+    params:
+      returns: AsyncOpenAI
+  get_config:
+    type: sync
+    module: ankigen_core.agents.config
+    args: [self, agent_name]
+    params:
+      returns: Optional[AgentConfig]
+  get_config_manager:
+    type: sync
+    module: ankigen_core.agents.config
+    args: [model_overrides, template_vars]
+    params:
+      returns: AgentConfigManager
+  get_dataframe_columns:
+    type: sync
+    module: ankigen_core.card_generator
+    params:
+      returns: list[str]
+  get_logger:
+    type: sync
+    module: ankigen_core.utils
+    params:
+      returns: logging.Logger
+  get_performance_metrics:
+    type: sync
+    module: ankigen_core.agents.integration
+    args: [self]
+    params:
+      returns: Dict
+  get_prompt_template:
+    type: sync
+    module: ankigen_core.agents.config
+    args: [self, template_name]
+    params:
+      returns: Optional[AgentPromptTemplate]
+  get_recent_logs:
+    type: sync
+    module: app
+    args: [logger_name]
+    params:
+      returns: str
+  get_session_summary:
+    type: sync
+    module: ankigen_core.agents.token_tracker
+    args: [self]
+    params:
+      returns: Dict
+  get_session_usage:
+    type: sync
+    module: ankigen_core.agents.token_tracker
+    args: [self]
+    params:
+      returns: Dict
+  get_token_tracker:
+    type: sync
+    module: ankigen_core.agents.token_tracker
+    params:
+      returns: TokenTracker
+  handle_auto_fill_click:
+    type: async
+    module: app
+    args: [subject_text, api_key, progress]
+  handle_export_dataframe_to_apkg_click:
+    type: async
+    module: app
+    args: [df, subject_for_deck_name]
+  handle_export_dataframe_to_csv_click:
+    type: async
+    module: app
+    args: [df]
+  handle_generate_click:
+    type: async
+    module: app
+    args: [api_key_input_val, subject_val, generation_mode_val, model_choice_val, topic_number_val, cards_per_topic_val, preference_prompt_val,
+      generate_cloze_checkbox_val, library_name_val, library_topic_val, progress]
+  handoff_to:
+    type: async
+    module: ankigen_core.agents.base
+    args: [self, target_agent, context]
+    params:
+      returns: Any
+  initialize:
+    type: async
+    module: ankigen_core.agents.base
+    args: [self]
+  initialize_client:
+    type: async
+    module: ankigen_core.llm_interface
+    args: [self, api_key]
+  integrate_with_existing_workflow:
+    type: async
+    module: ankigen_core.agents.integration
+    args: [client_manager, api_key]
+    params:
+      returns: Tuple
+  list_configs:
+    type: sync
+    module: ankigen_core.agents.config
+    args: [self]
+    params:
+      returns: List[str]
+  list_prompt_templates:
+    type: sync
+    module: ankigen_core.agents.config
+    args: [self]
+    params:
+      returns: List[str]
+  load_config_from_dict:
+    type: sync
+    module: ankigen_core.agents.config
+    args: [self, config_dict]
+  main:
+    type: sync
+    module: ankigen_core.cli
+    args: [prompt, topics, cards_per_topic, model, output, export_format, api_key, no_confirm]
+  orchestrate_card_generation:
+    type: async
+    module: ankigen_core.card_generator
+    args: [client_manager, cache, api_key_input, subject, generation_mode, source_text, url_input, model_name, topic_number,
+      cards_per_topic, preference_prompt, generate_cloze, use_llm_judge, library_name, library_topic, topics_list]
+  parse_agent_json_response:
+    type: sync
+    module: ankigen_core.agents.base
+    args: [response]
+    params:
+      returns: Dict
+  refresh_logs:
+    type: sync
+    module: app
+    args: [active]
+  render_system_prompt:
+    type: sync
+    module: ankigen_core.agents.config
+    args: [self]
+    params:
+      returns: str
+  render_user_prompt:
+    type: sync
+    module: ankigen_core.agents.config
+    args: [self]
+    params:
+      returns: str
+  reset_session:
+    type: sync
+    module: ankigen_core.agents.token_tracker
+    args: [self]
+  review_card:
+    type: async
+    module: ankigen_core.agents.generators
+    args: [self, card]
+    params:
+      returns: Tuple
+  save_config_to_file:
+    type: sync
+    module: ankigen_core.agents.config
+    args: [self, filename, agents]
+  set:
+    type: sync
+    module: ankigen_core.utils
+    args: [self, prompt, model, response]
+  setup_logger:
+    type: sync
+    module: ankigen_core.logging
+    args: [name, log_level]
+  setup_logging:
+    type: sync
+    module: ankigen_core.utils
+    params:
+      returns: logging.Logger
+  start_generation_ui:
+    type: sync
+    module: app
+  strip_html_tags:
+    type: sync
+    module: ankigen_core.utils
+    args: [text]
+    params:
+      returns: str
+  structured_agent_call:
+    type: async
+    module: ankigen_core.llm_interface
+    args: [openai_client, model, instructions, user_input, output_type, cache, cache_key, temperature, timeout, retry_attempts]
+    params:
+      returns: T
+  structured_output_completion:
+    type: async
+    module: ankigen_core.llm_interface
+    args: [openai_client, model, response_format, system_prompt, user_prompt, cache]
+    params:
+      returns: Optional[dict]
+  track_agent_usage:
+    type: sync
+    module: ankigen_core.agents.token_tracker
+    args: [prompt_text, completion_text, model, actual_cost]
+    params:
+      returns: TokenUsage
+  track_usage:
+    type: sync
+    module: ankigen_core.agents.token_tracker
+    args: [self, prompt_tokens, completion_tokens, model, actual_cost]
+    params:
+      returns: TokenUsage
+  track_usage_from_agents_sdk:
+    type: sync
+    module: ankigen_core.agents.token_tracker
+    args: [usage_dict, model]
+    params:
+      returns: Optional[TokenUsage]
+  track_usage_from_openai_response:
+    type: sync
+    module: ankigen_core.agents.token_tracker
+    args: [response_data, model]
+    params:
+      returns: Optional[TokenUsage]
+  track_usage_from_response:
+    type: sync
+    module: ankigen_core.agents.token_tracker
+    args: [self, response_data, model]
+    params:
+      returns: Optional[TokenUsage]
+  update_agent_config:
+    type: sync
+    module: ankigen_core.agents.config
+    args: [self, agent_name]
+  update_config:
+    type: sync
+    module: ankigen_core.agents.config
+    args: [self, agent_name, updates]
+    params:
+      returns: Optional[AgentConfig]
+  update_models:
+    type: sync
+    module: ankigen_core.agents.config
+    args: [self, model_overrides]
+  update_template_vars:
+    type: sync
+    module: ankigen_core.agents.config
+    args: [self, template_vars]
+  update_total_cards_preview:
+    type: sync
+    module: app
+    args: [topics_value, cards_value]
+    params:
+      returns: str
+  wait:
+    type: sync
+    module: ankigen_core.utils
+    args: [self]
+    params:
+      returns: None
+  wait_if_needed:
+    type: async
+    module: ankigen_core.llm_interface
+    args: [self, estimated_tokens_for_request]
+  workflow:
+    type: async
+    module: ankigen_core.cli
+
+variables:
+  OPENAI_API_KEY:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [ankigen_core.cli, app]
+  SPACE_ID:
+    type: env
+    params:
+      caller: [os.environ.get]
+      path: [app]
+
+files:
+  .ankigen:
+    type: literal
+    actions: [read]
+    params:
+      caller: [os.path.join]
+  exported_path:
+    type: variable
+    actions: [read]
+    params:
+      caller: [Path]
+  log_dir:
+    type: variable
+    actions: [read]
+    params:
+      caller: [os.makedirs]
+  log_file:
+    type: variable
+    actions: [read]
+    params:
+      caller: [os.path.exists, open]
