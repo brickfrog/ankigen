@@ -17,7 +17,7 @@ chevron==0.14.0
 click==8.2.1
 cloudpickle==3.1.2
 colorama==0.4.6
-cryptography==46.0.1
+cryptography==46.0.5
 cyclopts==4.4.1
 diskcache==5.6.3
 distro==1.9.0
@@ -30,12 +30,12 @@ fakeredis==2.33.0
 fastapi==0.120.4
 fastmcp==2.14.0
 ffmpy==0.6.0
-filelock==3.20.2
+filelock==3.20.3
 frozendict==2.4.6
 fsspec==2025.5.1
 genanki==0.13.1
-gradio==6.0.2
-gradio-client==2.0.1
+gradio==6.5.1
+gradio-client==2.0.3
 griffe==1.7.3
 groovy==0.1.2
 h11==0.16.0
@@ -72,12 +72,12 @@ opentelemetry-exporter-prometheus==0.60b1
 opentelemetry-instrumentation==0.60b1
 opentelemetry-sdk==1.39.1
 opentelemetry-semantic-conventions==0.60b1
-orjson==3.10.18
+orjson==3.11.7
 packaging==25.0
 pandas==2.3.2
 pathable==0.4.4
 pathvalidate==3.3.1
-pillow==12.1.0
+pillow==12.1.1
 platformdirs==4.3.8
 prometheus-client==0.23.1
 py-key-value-aio==0.3.0
@@ -94,7 +94,7 @@ pyperclip==1.10.0
 python-dateutil==2.9.0.post0
 python-dotenv==1.1.1
 python-json-logger==4.0.0
-python-multipart==0.0.20
+python-multipart==0.0.22
 pytz==2025.2
 pyyaml==6.0.2
 redis==7.1.0
@@ -123,7 +123,7 @@ types-requests==2.32.4.20250611
 typing-extensions==4.15.0
 typing-inspection==0.4.2
 tzdata==2025.2
-urllib3==2.6.2
+urllib3==2.6.3
 uvicorn==0.40.0
 websockets==15.0.1
 wrapt==1.17.3
