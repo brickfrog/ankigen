@@ -94,7 +94,7 @@ fastmcp==2.14.0
     # via ankigen (pyproject.toml)
 ffmpy==0.6.0
     # via gradio
-filelock==3.24.3
+filelock==3.25.0
     # via
     #   huggingface-hub
     #   virtualenv
@@ -106,7 +106,7 @@ fsspec==2025.5.1
     #   huggingface-hub
 genanki==0.13.1
     # via ankigen (pyproject.toml)
-gradio==6.6.0
+gradio==6.7.0
     # via ankigen (pyproject.toml)
 gradio-client==2.1.0
     # via gradio
@@ -448,7 +448,7 @@ uvicorn==0.40.0
     #   fastmcp
     #   gradio
     #   mcp
-virtualenv==20.38.0
+virtualenv==21.1.0
     # via pre-commit
 websockets==15.0.1
     # via fastmcp
