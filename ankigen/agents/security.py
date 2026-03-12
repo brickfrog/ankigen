@@ -9,7 +9,7 @@ from datetime import datetime
 from collections import defaultdict
 import asyncio
 
-from ankigen_core.logging import logger
+from ankigen.logging import logger
 
 
 @dataclass

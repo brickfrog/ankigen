@@ -8,8 +8,8 @@ from dataclasses import dataclass, field
 from functools import wraps, lru_cache
 import json
 
-from ankigen_core.logging import logger
-from ankigen_core.models import Card
+from ankigen.logging import logger
+from ankigen.models import Card
 
 
 T = TypeVar("T")

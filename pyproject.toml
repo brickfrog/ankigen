@@ -49,10 +49,13 @@ cli = [
 ]
 
 [project.scripts]
-ankigen = "ankigen_core.cli:main"
+ankigen = "ankigen.cli:main"
 
 [tool.setuptools]
 py-modules = ["app"]
+
+[tool.setuptools.packages.find]
+include = ["ankigen*"]
 
 [tool.pytest.ini_options]
 anyio_backend = "asyncio"

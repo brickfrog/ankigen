@@ -14,8 +14,8 @@ from openai import (
 )
 from pydantic import BaseModel
 
-from ankigen_core.logging import logger
-from ankigen_core.utils import ResponseCache
+from ankigen.logging import logger
+from ankigen.utils import ResponseCache
 
 T = TypeVar("T", bound=BaseModel)
 

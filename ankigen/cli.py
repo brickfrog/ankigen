@@ -13,12 +13,12 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 from rich.table import Table
 from rich.panel import Panel
 
-from ankigen_core.agents.token_tracker import get_token_tracker
-from ankigen_core.auto_config import AutoConfigService
-from ankigen_core.card_generator import orchestrate_card_generation
-from ankigen_core.exporters import export_dataframe_to_apkg, export_dataframe_to_csv
-from ankigen_core.llm_interface import OpenAIClientManager
-from ankigen_core.utils import ResponseCache, get_logger
+from ankigen.agents.token_tracker import get_token_tracker
+from ankigen.auto_config import AutoConfigService
+from ankigen.card_generator import orchestrate_card_generation
+from ankigen.exporters import export_dataframe_to_apkg, export_dataframe_to_csv
+from ankigen.llm_interface import OpenAIClientManager
+from ankigen.utils import ResponseCache, get_logger
 
 console = Console()
 logger = get_logger()

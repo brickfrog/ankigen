@@ -3,10 +3,10 @@
 from typing import Dict, Any
 from openai import AsyncOpenAI
 
-from ankigen_core.logging import logger
-from ankigen_core.context7 import Context7Client
-from ankigen_core.agents.schemas import AutoConfigSchema
-from ankigen_core.llm_interface import structured_agent_call
+from ankigen.logging import logger
+from ankigen.context7 import Context7Client
+from ankigen.agents.schemas import AutoConfigSchema
+from ankigen.llm_interface import structured_agent_call
 
 
 class AutoConfigService:

@@ -5,8 +5,8 @@ from typing import List, Dict, Any, Optional, Tuple
 
 from openai import AsyncOpenAI
 
-from ankigen_core.logging import logger
-from ankigen_core.models import Card, CardFront, CardBack
+from ankigen.logging import logger
+from ankigen.models import Card, CardFront, CardBack
 from .base import BaseAgentWrapper, AgentConfig
 from .config import get_config_manager
 from .schemas import CardsGenerationSchema

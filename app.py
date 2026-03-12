@@ -7,23 +7,23 @@ from datetime import datetime
 import gradio as gr
 import pandas as pd
 
-from ankigen_core.card_generator import (
+from ankigen.card_generator import (
     AVAILABLE_MODELS,
     orchestrate_card_generation,
 )  # GENERATION_MODES is internal to card_generator
-from ankigen_core.exporters import (
+from ankigen.exporters import (
     export_dataframe_to_apkg,
     export_dataframe_to_csv,
 )  # Anki models (BASIC_MODEL, CLOZE_MODEL) are internal to exporters
-from ankigen_core.llm_interface import (
+from ankigen.llm_interface import (
     OpenAIClientManager,
 )  # structured_output_completion is internal to core modules
-from ankigen_core.ui_logic import update_mode_visibility
-from ankigen_core.utils import (
+from ankigen.ui_logic import update_mode_visibility
+from ankigen.utils import (
     ResponseCache,
     get_logger,
 )  # fetch_webpage_text is used by card_generator
-from ankigen_core.auto_config import AutoConfigService
+from ankigen.auto_config import AutoConfigService
 
 # --- Initialization ---
 logger = get_logger()
@@ -341,7 +341,7 @@ def create_ankigen_interface(theme=None, css=None, js=None):
                             label="Download Deck", visible=False
                         )
 
-            # --- Event Handlers --- (Updated to use functions from ankigen_core)
+            # --- Event Handlers --- (Updated to use functions from ankigen)
             generation_mode.change(
                 fn=update_mode_visibility,
                 inputs=[

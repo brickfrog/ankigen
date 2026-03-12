@@ -4,10 +4,10 @@ from typing import List, Dict, Any, Tuple, Optional
 from datetime import datetime
 
 
-from ankigen_core.logging import logger
-from ankigen_core.models import Card
-from ankigen_core.llm_interface import OpenAIClientManager
-from ankigen_core.context7 import Context7Client
+from ankigen.logging import logger
+from ankigen.models import Card
+from ankigen.llm_interface import OpenAIClientManager
+from ankigen.context7 import Context7Client
 
 from .generators import SubjectExpertAgent
 
@@ -36,7 +36,7 @@ class AgentOrchestrator:
             # Set up model overrides if provided
             config_manager = None
             if model_overrides:
-                from ankigen_core.agents.config import get_config_manager
+                from ankigen.agents.config import get_config_manager
 
                 config_manager = get_config_manager()
                 config_manager.update_models(model_overrides)
@@ -44,7 +44,7 @@ class AgentOrchestrator:
 
             if reasoning_overrides:
                 if config_manager is None:
-                    from ankigen_core.agents.config import get_config_manager
+                    from ankigen.agents.config import get_config_manager
 
                     config_manager = get_config_manager()
                 for agent_name, effort in reasoning_overrides.items():
