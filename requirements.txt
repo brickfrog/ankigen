@@ -23,7 +23,7 @@ attrs==25.4.0
     #   referencing
 beautifulsoup4==4.13.5
     # via ankigen (pyproject.toml)
-black==26.3.0
+black==26.3.1
     # via ankigen (pyproject.toml)
 brotli==1.2.0
     # via
