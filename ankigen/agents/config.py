@@ -6,7 +6,7 @@ from pathlib import Path
 from dataclasses import dataclass, asdict
 from jinja2 import Environment, FileSystemLoader
 
-from ankigen_core.logging import logger
+from ankigen.logging import logger
 from .base import AgentConfig
 
 

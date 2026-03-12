@@ -5,18 +5,18 @@ import pandas as pd
 from typing import List, Dict, Any
 
 # Imports from our core modules
-from ankigen_core.utils import (
+from ankigen.utils import (
     get_logger,
     ResponseCache,
     strip_html_tags,
 )
-from ankigen_core.llm_interface import OpenAIClientManager
-from ankigen_core.models import (
+from ankigen.llm_interface import OpenAIClientManager
+from ankigen.models import (
     Card,
 )  # Import necessary Pydantic models
 
 # Import agent system - required
-from ankigen_core.agents.integration import AgentOrchestrator
+from ankigen.agents.integration import AgentOrchestrator
 from agents import set_tracing_disabled
 
 logger = get_logger()
@@ -166,7 +166,7 @@ async def orchestrate_card_generation(
         return pd.DataFrame(columns=get_dataframe_columns()), "Agent system error", ""
 
     try:
-        from ankigen_core.agents.token_tracker import get_token_tracker
+        from ankigen.agents.token_tracker import get_token_tracker
 
         token_tracker = get_token_tracker()
         orchestrator = AgentOrchestrator(client_manager)

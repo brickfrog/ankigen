@@ -10,8 +10,8 @@ from tenacity import (
     wait_exponential,
     retry_if_exception_type,
 )
-from ankigen_core.logging import logger
-from ankigen_core.exceptions import (
+from ankigen.logging import logger
+from ankigen.exceptions import (
     ValidationError,
 )
 

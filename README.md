@@ -56,21 +56,21 @@ Generate flashcards directly from your terminal with intelligent auto-configurat
 
 ```bash
 # Quick generation (auto-detects best settings)
-uv run python -m ankigen_core.cli -p "Basic SQL"
+uv run python -m ankigen.cli -p "Basic SQL"
 
 # Custom settings
-uv run python -m ankigen_core.cli -p "React Hooks" \
+uv run python -m ankigen.cli -p "React Hooks" \
   --topics 5 \
   --cards-per-topic 8 \
   --output hooks.apkg
 
 # Export to CSV
-uv run python -m ankigen_core.cli -p "Docker basics" \
+uv run python -m ankigen.cli -p "Docker basics" \
   --format csv \
   -o docker.csv
 
 # Skip confirmation prompt
-uv run python -m ankigen_core.cli -p "Python Lists" --no-confirm
+uv run python -m ankigen.cli -p "Python Lists" --no-confirm
 ```
 
 **CLI Options:**
@@ -100,7 +100,7 @@ uv run python -m ankigen_core.cli -p "Python Lists" --no-confirm
 ## Project Structure
 
 - `app.py`: Main Gradio web application
-- `ankigen_core/`: Core logic modules
+- `ankigen/`: Core logic modules
   - `cli.py`: Command-line interface
   - `agents/`: Agent system implementation
   - `card_generator.py`: Card generation orchestration
@@ -123,7 +123,7 @@ uv run python -m ankigen_core.cli -p "Python Lists" --no-confirm
 
 3. Run with coverage:
    ```bash
-   uv run pytest --cov=ankigen_core tests/
+   uv run pytest --cov=ankigen tests/
    ```
 
 ## License

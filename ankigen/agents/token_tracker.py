@@ -8,7 +8,7 @@ from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from ankigen_core.logging import logger
+from ankigen.logging import logger
 
 
 @dataclass

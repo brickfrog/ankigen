@@ -4,8 +4,8 @@ import gradio as gr
 import pandas as pd
 from typing import List
 
-from ankigen_core.utils import get_logger
-from ankigen_core.models import Card
+from ankigen.utils import get_logger
+from ankigen.models import Card
 
 logger = get_logger()
 

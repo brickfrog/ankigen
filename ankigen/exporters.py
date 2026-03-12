@@ -10,7 +10,7 @@ import csv
 from datetime import datetime
 import os
 
-from ankigen_core.utils import get_logger, strip_html_tags
+from ankigen.utils import get_logger, strip_html_tags
 
 logger = get_logger()
 

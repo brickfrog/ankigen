@@ -8,7 +8,7 @@ import json
 from openai import AsyncOpenAI
 from agents import Agent, Runner, ModelSettings
 
-from ankigen_core.logging import logger
+from ankigen.logging import logger
 from .token_tracker import track_usage_from_agents_sdk
 
 
