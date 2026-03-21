@@ -82,12 +82,14 @@ ANKI_CLOZE_MODEL_NAME = "AnkiGen Cloze"
 
 # It's good practice to generate unique IDs. These are examples.
 # Real applications might use a persistent way to store/retrieve these if models are updated.
-DEFAULT_BASIC_MODEL_ID = int(
-    hashlib.md5(ANKI_BASIC_MODEL_NAME.encode()).hexdigest()[:8], 16
-) % (1 << 31)
-DEFAULT_CLOZE_MODEL_ID = int(
-    hashlib.md5(ANKI_CLOZE_MODEL_NAME.encode()).hexdigest()[:8], 16
-) % (1 << 31)
+DEFAULT_BASIC_MODEL_ID = (1 << 30) + (
+    int(hashlib.md5(ANKI_BASIC_MODEL_NAME.encode()).hexdigest()[:8], 16)
+    % (1 << 30)
+)
+DEFAULT_CLOZE_MODEL_ID = (1 << 30) + (
+    int(hashlib.md5(ANKI_CLOZE_MODEL_NAME.encode()).hexdigest()[:8], 16)
+    % (1 << 30)
+)
 
 # --- Shared CSS with dark mode support ---
 CARD_CSS = """
