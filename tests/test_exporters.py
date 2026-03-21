@@ -3,7 +3,7 @@ import pandas as pd
 import os
 import gradio as gr
 from unittest.mock import patch
-from ankigen_core.exporters import (
+from ankigen.exporters import (
     _format_field_as_string,
     _generate_timestamped_filename,
     _validate_non_empty_data,
@@ -123,14 +123,14 @@ def test_export_cards_to_apkg_zero_valid_notes():
 # --- export_cards_from_crawled_content Tests ---
 
 
-@patch("ankigen_core.exporters.export_cards_to_csv")
+@patch("ankigen.exporters.export_cards_to_csv")
 def test_export_cards_from_crawled_content_csv(mock_csv):
     cards = [{"front": "Q", "back": "A"}]
     export_cards_from_crawled_content(cards, export_format="csv")
     mock_csv.assert_called_once()
 
 
-@patch("ankigen_core.exporters.export_cards_to_apkg")
+@patch("ankigen.exporters.export_cards_to_apkg")
 def test_export_cards_from_crawled_content_apkg(mock_apkg):
     cards = [{"front": "Q", "back": "A"}]
     export_cards_from_crawled_content(cards, export_format="apkg")
@@ -161,7 +161,7 @@ def test_export_dataframe_to_csv_empty():
         export_dataframe_to_csv(None)
 
 
-@patch("ankigen_core.exporters.export_cards_to_apkg")
+@patch("ankigen.exporters.export_cards_to_apkg")
 def test_export_dataframe_to_apkg_success(mock_apkg):
     df = pd.DataFrame({"Question": ["Q1"], "Answer": ["A1"], "Card_Type": ["Basic"]})
     export_dataframe_to_apkg(df, output_path="test.apkg", deck_name="Test Deck")
