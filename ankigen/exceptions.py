@@ -83,4 +83,4 @@ def handle_exception(
     if reraise:
         if reraise_as:
             raise reraise_as(f"{message}: {exc}") from exc
-        raise
+        raise exc
