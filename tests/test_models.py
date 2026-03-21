@@ -1,6 +1,6 @@
 import pytest
 from pydantic import ValidationError
-from ankigen_core.models import (
+from ankigen.models import (
     Step,
     Subtopics,
     Topics,

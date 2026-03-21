@@ -1,7 +1,7 @@
 import pytest
 import hashlib
 from unittest.mock import MagicMock
-from ankigen_core.utils import (
+from ankigen.utils import (
     ResponseCache,
     RateLimiter,
     strip_html_tags,

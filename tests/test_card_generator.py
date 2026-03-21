@@ -1,4 +1,4 @@
-from ankigen_core.card_generator import (
+from ankigen.card_generator import (
     _parse_model_selection,
     _map_generation_mode_to_subject,
     _build_generation_context,
@@ -6,7 +6,7 @@ from ankigen_core.card_generator import (
     get_dataframe_columns,
     generate_token_usage_html,
 )
-from ankigen_core.models import Card, CardFront, CardBack
+from ankigen.models import Card, CardFront, CardBack
 
 # --- _parse_model_selection Tests ---
 
@@ -16,7 +16,7 @@ def test_parse_model_selection():
     assert _parse_model_selection("gpt-5.2-instant") == ("gpt-5.2", "none")
     assert _parse_model_selection("gpt-5.2-thinking") == ("gpt-5.2", "high")
     assert _parse_model_selection("custom-model") == ("custom-model", None)
-    assert _parse_model_selection("") == ("gpt-5.2", None)
+    assert _parse_model_selection("") == ("gpt-5.4", None)
 
 
 # --- _map_generation_mode_to_subject Tests ---
@@ -112,14 +112,14 @@ def test_generate_token_usage_html():
 
 
 def test_available_models_constant():
-    from ankigen_core.card_generator import AVAILABLE_MODELS
+    from ankigen.card_generator import AVAILABLE_MODELS
 
     assert len(AVAILABLE_MODELS) >= 3
     assert AVAILABLE_MODELS[0]["value"] == "gpt-5.2-auto"
 
 
 def test_generation_modes_constant():
-    from ankigen_core.card_generator import GENERATION_MODES
+    from ankigen.card_generator import GENERATION_MODES
 
     assert len(GENERATION_MODES) >= 1
     assert GENERATION_MODES[0]["value"] == "subject"
