@@ -166,13 +166,14 @@ def test_dataframe_to_cards_error_handling(mocker):
     ]
 
     # Case 1: Missing ID column (KeyError)
-    # This triggers an UnboundLocalError in ui_logic.py because original_card_index is not defined
-    # but used in the except block. We test that it happens (documenting the bug).
+    # Desired behavior: the function should handle this gracefully, log an error,
+    # and not raise an UnboundLocalError.
     df_missing_id = pd.DataFrame({"Front": ["Q1"]})
 
-    with pytest.raises(UnboundLocalError):
-        dataframe_to_cards(df_missing_id, original_cards)
+    result = dataframe_to_cards(df_missing_id, original_cards)
 
+    # Expect that no cards are returned for rows missing a valid ID
+    assert result == []
     mock_logger.error.assert_called()
 
 
