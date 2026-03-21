@@ -69,17 +69,22 @@ class BaseAgentWrapper:
             set_default_openai_client(self.openai_client, use_for_tracing=False)
 
             # Create model settings with temperature and optional reasoning effort
-            model_settings_kwargs = {"temperature": self.config.temperature}
             effort = self.config.reasoning_effort
             if effort in ("auto", "", None):
                 effort = None
 
-            # GPT-5.x (not chat-latest) supports reasoning_effort
-            if (
+            # GPT-5.x with reasoning effort > none doesn't support temperature
+            uses_reasoning = (
                 effort
+                and effort != "none"
                 and self.config.model.startswith("gpt-5")
                 and "chat-latest" not in self.config.model
-            ):
+            )
+            model_settings_kwargs = (
+                {} if uses_reasoning else {"temperature": self.config.temperature}
+            )
+
+            if uses_reasoning:
                 from openai.types.shared import Reasoning
 
                 model_settings_kwargs["reasoning"] = Reasoning(effort=effort)
