@@ -131,10 +131,8 @@ async def test_aclose_method(mocker):
 @pytest.mark.anyio
 async def test_aclose_method_fallback_to_sync(mocker):
     manager = OpenAIClientManager()
-    mock_client = MagicMock()
-    # Only has 'close' method, not 'aclose'
-    if hasattr(mock_client, "aclose"):
-        del mock_client.aclose
+    # Create a client mock that only exposes 'close', so 'aclose' is truly absent
+    mock_client = MagicMock(spec_set=["close"])
     mock_client.close = MagicMock()
     manager._client = mock_client
 
