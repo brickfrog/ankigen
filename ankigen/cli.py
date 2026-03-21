@@ -221,7 +221,14 @@ def export_cards(
 @click.option(
     "--model",
     type=click.Choice(
-        ["gpt-5.2-auto", "gpt-5.2-instant", "gpt-5.2-thinking"],
+        [
+            "gpt-5.2-auto",
+            "gpt-5.2-instant",
+            "gpt-5.2-thinking",
+            "gpt-5.4-auto",
+            "gpt-5.4-instant",
+            "gpt-5.4-thinking",
+        ],
         case_sensitive=False,
     ),
     help="Model to use for generation (auto-selected if not specified)",

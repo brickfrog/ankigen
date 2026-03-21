@@ -63,24 +63,18 @@ GENERATION_MODES = [
 def _parse_model_selection(model_selection: str) -> tuple[str, str | None]:
     """Parse model selection into model name and reasoning effort."""
     if not model_selection:
-        return "gpt-5.2", None
+        return "gpt-5.4", None
 
     normalized = model_selection.strip().lower()
-    if normalized == "gpt-5.2-auto":
-        return "gpt-5.2", None
-    if normalized == "gpt-5.2-instant":
-        return "gpt-5.2", "none"
-    if normalized == "gpt-5.2-thinking":
-        return "gpt-5.2", "high"
 
-    if "gpt-5.2" in normalized:
-        if "instant" in normalized:
-            return "gpt-5.2", "none"
-        if "thinking" in normalized:
-            return "gpt-5.2", "high"
-        if "auto" in normalized:
-            return "gpt-5.2", None
-        return "gpt-5.2", None
+    # Match exact gpt-5.X-{auto,instant,thinking} variants only
+    for base in ("gpt-5.4", "gpt-5.2"):
+        if normalized == base or normalized == f"{base}-auto":
+            return base, None
+        if normalized == f"{base}-instant":
+            return base, "none"
+        if normalized == f"{base}-thinking":
+            return base, "high"
 
     # Fallback for direct model names
     return model_selection, None
