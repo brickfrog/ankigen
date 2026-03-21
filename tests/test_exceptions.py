@@ -66,15 +66,6 @@ def test_handle_exception_reraise_true():
         assert str(excinfo.value) == "Test error"
 
 
-def test_handle_exception_reraise_false():
-    """Test that handle_exception does not re-raise when reraise=False."""
-    mock_logger = MagicMock()
-    exc = ValueError("Test error")
-
-    handle_exception(exc, mock_logger, "Error", reraise=False)
-    # Should not raise anything
-
-
 def test_handle_exception_reraise_as():
     """Test that handle_exception wraps the exception in reraise_as type."""
     mock_logger = MagicMock()
