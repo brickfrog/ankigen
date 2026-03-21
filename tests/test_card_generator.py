@@ -38,15 +38,15 @@ def test_build_generation_context():
 
 
 def test_get_token_usage_html():
-    mock_tracker = MagicMock()
+    # Use spec to ensure hasattr(mock, "get_session_summary") is true
+    mock_tracker = MagicMock(spec=["get_session_summary"])
     mock_tracker.get_session_summary.return_value = {"total_tokens": 100}
 
     html = _get_token_usage_html(mock_tracker)
     assert "100 tokens" in html
 
-    # Test fallback
-    mock_tracker_legacy = MagicMock()
-    del mock_tracker_legacy.get_session_summary
+    # Test fallback: Use spec to ensure hasattr(mock, "get_session_summary") is false
+    mock_tracker_legacy = MagicMock(spec=["get_session_usage"])
     mock_tracker_legacy.get_session_usage.return_value = {"total_tokens": 200}
 
     html = _get_token_usage_html(mock_tracker_legacy)

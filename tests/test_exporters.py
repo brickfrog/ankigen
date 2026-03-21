@@ -64,16 +64,24 @@ def test_export_cards_to_csv(tmp_path):
     assert df.iloc[1]["tags"] == ""  # Default empty string for missing tags
 
 
-def test_export_cards_to_csv_missing_keys():
-    # Test empty cards list
+def test_export_cards_to_csv_missing_keys(tmp_path):
+    # Test empty cards list already covered by test_validate_non_empty_data which is called first
     with pytest.raises(ValueError, match="No cards provided to export"):
         export_cards_to_csv([])
 
-    # Test cards with missing mandatory keys (they are skipped in current implementation)
-    # export_cards_to_csv will try to export, catch KeyError for the first card,
-    # and finish without writing any rows (other than header) if all fail.
-    # It doesn't raise if some cards are skipped, unless we want to test skip logic.
-    pass
+    # Test cards with missing mandatory keys (they should be skipped)
+    cards = [
+        {"front": "Q1", "back": "A1"},  # Valid
+        {"front": "Q2"},  # Missing "back"
+        {"back": "A3"},  # Missing "front"
+    ]
+    filename = str(tmp_path / "mixed.csv")
+    path = export_cards_to_csv(cards, filename)
+
+    assert os.path.exists(path)
+    df = pd.read_csv(path).fillna("")
+    assert len(df) == 1
+    assert df.iloc[0]["front"] == "Q1"
 
 
 @patch("genanki.Package")

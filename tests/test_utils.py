@@ -174,9 +174,19 @@ def test_get_logger_singleton():
     assert logger1.name == "ankigen"
 
 
-def test_setup_logging_behavior():
-    # Calling setup_logging multiple times should return the same logger
+@patch("ankigen_core.utils.RotatingFileHandler")
+def test_setup_logging_behavior(mock_rfh):
+    # Reset singleton state for testing
+    import ankigen_core.utils
+
+    ankigen_core.utils._logger_instance = None
+
+    # Calling setup_logging should now call RotatingFileHandler
     logger1 = setup_logging()
+    assert len(logger1.handlers) >= 2
+    mock_rfh.assert_called_once_with("ankigen.log", maxBytes=1024 * 1024, backupCount=5)
+
+    # Second call should return same instance without calling RotatingFileHandler again
     logger2 = setup_logging()
     assert logger1 is logger2
-    assert len(logger1.handlers) >= 2  # Should have at least File and Stream handlers
+    assert mock_rfh.call_count == 1
