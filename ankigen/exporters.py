@@ -5,6 +5,7 @@ import pandas as pd
 import genanki
 import random
 import html
+import hashlib
 from typing import List, Dict, Any, Optional
 import csv
 from datetime import datetime
@@ -81,8 +82,12 @@ ANKI_CLOZE_MODEL_NAME = "AnkiGen Cloze"
 
 # It's good practice to generate unique IDs. These are examples.
 # Real applications might use a persistent way to store/retrieve these if models are updated.
-DEFAULT_BASIC_MODEL_ID = random.randrange(1 << 30, 1 << 31)
-DEFAULT_CLOZE_MODEL_ID = random.randrange(1 << 30, 1 << 31)
+DEFAULT_BASIC_MODEL_ID = int(
+    hashlib.md5(ANKI_BASIC_MODEL_NAME.encode()).hexdigest()[:8], 16
+) % (1 << 31)
+DEFAULT_CLOZE_MODEL_ID = int(
+    hashlib.md5(ANKI_CLOZE_MODEL_NAME.encode()).hexdigest()[:8], 16
+) % (1 << 31)
 
 # --- Shared CSS with dark mode support ---
 CARD_CSS = """
