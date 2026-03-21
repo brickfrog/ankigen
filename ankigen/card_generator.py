@@ -67,14 +67,14 @@ def _parse_model_selection(model_selection: str) -> tuple[str, str | None]:
 
     normalized = model_selection.strip().lower()
 
-    # Match pattern: gpt-5.X-{auto,instant,thinking}
+    # Match exact gpt-5.X-{auto,instant,thinking} variants only
     for base in ("gpt-5.4", "gpt-5.2"):
-        if base in normalized:
-            if "instant" in normalized:
-                return base, "none"
-            if "thinking" in normalized:
-                return base, "high"
+        if normalized == base or normalized == f"{base}-auto":
             return base, None
+        if normalized == f"{base}-instant":
+            return base, "none"
+        if normalized == f"{base}-thinking":
+            return base, "high"
 
     # Fallback for direct model names
     return model_selection, None
