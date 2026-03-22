@@ -1,4 +1,14 @@
-"""CLI interface for AnkiGen - Generate Anki flashcards from the command line"""
+"""
+CLI interface for AnkiGen - Generate Anki flashcards via GPT-based AI.
+
+This module provides a command-line application built with Click that
+orchestrates card generation from subtopics derived from a subject prompt.
+It supports auto-configuration, progress tracking, and multiple export formats.
+
+Example:
+    $ ankigen -p "Basic SQL"
+    $ ankigen -p "React Hooks" --topics 5 --cards-per-topic 8 -o hooks.apkg
+"""
 
 import asyncio
 import os
