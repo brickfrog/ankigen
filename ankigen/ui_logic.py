@@ -101,6 +101,7 @@ def dataframe_to_cards(df: pd.DataFrame, original_cards: List[Card]) -> List[Car
         return []
 
     for index, row in df.iterrows():
+        original_card_index = -1
         try:
             card_id = int(row["ID"])  # DataFrame ID is 1-indexed
             original_card_index = card_id - 1
