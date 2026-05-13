@@ -23,8 +23,9 @@ def setup_logging() -> logging.Logger:
     logger.setLevel(logging.DEBUG)  # Keep debug level for the root logger
 
     # Prevent duplicate handlers if called multiple times (though get_logger should prevent this)
-    if logger.hasHandlers():
-        logger.handlers.clear()
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+        handler.close()
 
     detailed_formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(module)s:%(lineno)d - %(message)s"
@@ -225,6 +226,9 @@ def strip_html_tags(text: str) -> str:
     """Removes HTML tags from a string using a safe, non-regex approach."""
     if not isinstance(text, str):
         return str(text)  # Ensure it's a string, or return as is if not coercible
+
+    if "<" not in text and ">" not in text:
+        return text.strip()
 
     # Use BeautifulSoup for safe HTML parsing
     soup = BeautifulSoup(text, "html.parser")

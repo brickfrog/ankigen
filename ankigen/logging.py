@@ -13,8 +13,9 @@ def setup_logger(name="ankigen", log_level=logging.INFO):
     # Remove existing handlers if any
     # This ensures that if setup_logger is called multiple times for the same logger name,
     # it doesn't accumulate handlers.
-    if logger.hasHandlers():
-        logger.handlers.clear()
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+        handler.close()
 
     # Create formatter
     formatter = logging.Formatter(

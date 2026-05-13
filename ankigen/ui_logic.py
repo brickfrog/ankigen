@@ -109,12 +109,12 @@ def dataframe_to_cards(df: pd.DataFrame, original_cards: List[Card]) -> List[Car
             if 0 <= original_card_index < len(original_cards):
                 card_to_update = original_cards[original_card_index]
 
-                new_front = card_to_update.front.copy(
+                new_front = card_to_update.front.model_copy(
                     update={
                         "question": str(row.get("Front", card_to_update.front.question))
                     }
                 )
-                new_back = card_to_update.back.copy(
+                new_back = card_to_update.back.model_copy(
                     update={
                         "answer": str(row.get("Back", card_to_update.back.answer)),
                         "explanation": str(
@@ -144,7 +144,7 @@ def dataframe_to_cards(df: pd.DataFrame, original_cards: List[Card]) -> List[Car
                     row.get("Topic", new_metadata.get("topic", "N/A"))
                 )
 
-                updated_card = card_to_update.copy(
+                updated_card = card_to_update.model_copy(
                     update={
                         "front": new_front,
                         "back": new_back,

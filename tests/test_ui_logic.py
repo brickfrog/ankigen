@@ -182,7 +182,8 @@ def test_dataframe_to_cards_error_handling_recovery(mocker):
 
     # Patch the class method instead of instance because Pydantic blocks instance patching of methods
     mocker.patch(
-        "ankigen.models.CardFront.copy", side_effect=AttributeError("Mock Error")
+        "ankigen.models.CardFront.model_copy",
+        side_effect=AttributeError("Mock Error"),
     )
 
     card = Card(
