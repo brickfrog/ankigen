@@ -101,6 +101,7 @@ def dataframe_to_cards(df: pd.DataFrame, original_cards: List[Card]) -> List[Car
         return []
 
     for index, row in df.iterrows():
+        original_card_index = None
         try:
             card_id = int(row["ID"])  # DataFrame ID is 1-indexed
             original_card_index = card_id - 1
@@ -162,7 +163,9 @@ def dataframe_to_cards(df: pd.DataFrame, original_cards: List[Card]) -> List[Car
             logger.error(
                 f"Error processing row {index} from DataFrame: {row}. Error: {e}"
             )
-            if 0 <= original_card_index < len(original_cards):
+            if original_card_index is not None and 0 <= original_card_index < len(
+                original_cards
+            ):
                 updated_cards.append(original_cards[original_card_index])
             continue
     return updated_cards

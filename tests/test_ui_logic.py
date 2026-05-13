@@ -1,4 +1,3 @@
-import pytest
 import pandas as pd
 from ankigen.models import Card, CardFront, CardBack
 from ankigen.ui_logic import (

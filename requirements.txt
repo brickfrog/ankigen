@@ -51,7 +51,7 @@ colorama==0.4.6
     #   click
     #   griffe
     #   tqdm
-cryptography==46.0.5
+cryptography==48.0.0
     # via pyjwt
 distro==1.9.0
     # via openai
@@ -114,7 +114,7 @@ jsonschema==4.26.0
     # via mcp
 jsonschema-specifications==2025.9.1
     # via jsonschema
-lxml==6.0.2
+lxml==6.1.0
     # via ankigen
 markdown-it-py==4.0.0
     # via rich
@@ -149,7 +149,7 @@ pandas==3.0.1
     # via
     #   ankigen
     #   gradio
-pillow==12.1.1
+pillow==12.2.0
     # via
     #   ankigen
     #   gradio
@@ -170,7 +170,7 @@ pydantic-settings==2.13.1
     # via mcp
 pydub==0.25.1
     # via gradio
-pygments==2.19.2
+pygments==2.20.0
     # via rich
 pyjwt==2.12.1
     # via mcp
@@ -178,7 +178,7 @@ python-dateutil==2.9.0.post0
     # via pandas
 python-dotenv==1.2.2
     # via pydantic-settings
-python-multipart==0.0.22
+python-multipart==0.0.28
     # via
     #   ankigen
     #   gradio
@@ -198,7 +198,7 @@ referencing==0.37.0
     #   jsonschema-specifications
 regex==2026.2.28
     # via tiktoken
-requests==2.33.0
+requests==2.34.0
     # via
     #   openai-agents
     #   tiktoken
@@ -269,7 +269,7 @@ typing-inspection==0.4.2
     #   pydantic-settings
 tzdata==2025.3 ; sys_platform == 'emscripten' or sys_platform == 'win32'
     # via pandas
-urllib3==2.6.3
+urllib3==2.7.0
     # via
     #   ankigen
     #   requests
