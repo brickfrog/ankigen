@@ -29,6 +29,7 @@ dependencies = [
     "pillow>=12.2.0",
     "python-multipart>=0.0.26",
     "urllib3>=2.7.0",
+    "idna>=3.15",
 ]
 
 [project.optional-dependencies]

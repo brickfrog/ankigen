@@ -101,8 +101,9 @@ huggingface-hub==1.7.2
     # via
     #   gradio
     #   gradio-client
-idna==3.11
+idna==3.18
     # via
+    #   ankigen
     #   anyio
     #   httpx
     #   requests
