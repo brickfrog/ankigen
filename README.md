@@ -10,6 +10,13 @@ sdk_version: 6.19.0
 
 # AnkiGen - Anki Card Generator
 
+> [!NOTE]
+> **This project is archived and no longer maintained.**
+>
+> The hosted Gradio Space is no longer being updated — its last deploy (2026-06-23) ended in a build error, and automated deploys are disabled. The CLI and library code still work if installed locally, but nothing here receives updates or security patches going forward.
+>
+> Feel free to fork it if you find it useful.
+
 AnkiGen generates Anki flashcards using OpenAI's GPT models. Available as both a web interface (Gradio) and command-line tool, it creates CSV and `.apkg` deck files with intelligent auto-configuration.
 
 ## Features
